@@ -214,7 +214,11 @@
 
     headers['Content-Type'] = 'application/json';
     const ifMatch = FEATURES.conflicts && op.type === 'update' ? ifMatchFor(op, session) : null;
-    if (ifMatch != null) headers['If-Match'] = `"${ifMatch}"`;
+    if (ifMatch != null) {
+      headers['If-Match'] = `"${ifMatch}"`;
+      // Double non standard : Netlify ne transmet pas If-Match à la Function (voir server/api.mjs).
+      headers['X-If-Match'] = `"${ifMatch}"`;
+    }
     return new Request(url, {
       method: op.type === 'create' ? 'POST' : 'PUT',
       headers,

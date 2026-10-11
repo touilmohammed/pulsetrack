@@ -85,3 +85,15 @@ console.log(results.join('\n'));
   const other = await limited(new Request('http://x/api/sessions/abc', { method: 'DELETE', headers: { 'X-Device-Id': DEV } }));
   console.log(`${statuses.join(',') === '204,204,204,429' && last.headers.get('Retry-After') && read.status === 200 && other.status === 204 ? 'OK  ' : 'FAIL'} Limitation de débit : 429 + Retry-After, lectures et autres appareils non bloqués — ${statuses}`);
 }
+
+// X-If-Match (double de If-Match, Netlify ne transmet pas l'en-tête standard aux Functions)
+{
+  const DEV4 = '55555555-5555-4555-8555-555555555555';
+  const SID4 = '66666666-6666-4666-8666-666666666666';
+  const body = { ...base, id: SID4 };
+  const send = (method, path, b, headers = {}) => api(new Request('http://x' + path, { method, headers: { 'Content-Type': 'application/json', 'X-Device-Id': DEV4, ...headers }, body: JSON.stringify(b) }));
+  await send('POST', '/api/sessions', body);
+  const ok = await send('PUT', `/api/sessions/${SID4}`, body, { 'X-If-Match': '"1"' });
+  const stale = await send('PUT', `/api/sessions/${SID4}`, body, { 'X-If-Match': '"1"' });
+  console.log(`${ok.status === 200 && stale.status === 412 ? 'OK  ' : 'FAIL'} X-If-Match : même effet que If-Match (200 puis 412) — ${ok.status},${stale.status}`);
+}

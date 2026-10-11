@@ -156,7 +156,9 @@ export function createApi(store, {
   // PUT : modification. Avec If-Match, refus (412) si le serveur a une version plus récente :
   // rien n'est écrasé et la copie du serveur est renvoyée pour la réconciliation.
   async function update(deviceId, id, request) {
-    const ifMatch = parseIfMatch(request.headers.get('If-Match'));
+    // X-If-Match : double de If-Match, que le CDN de Netlify ne transmet pas aux Functions (constaté
+    // en production : un If-Match périmé y était accepté). Le standard reste lu en premier.
+    const ifMatch = parseIfMatch(request.headers.get('If-Match') ?? request.headers.get('X-If-Match'));
     const body = await readJson(request);
     const { errors, value } = validateSession(body);
     if (errors.length) throw new HttpError(422, `Séance invalide : ${errors.join(', ')}.`);

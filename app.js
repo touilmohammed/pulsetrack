@@ -142,11 +142,12 @@ if (isIos && !isStandalone()) {
   iosHint.hidden = false;
 }
 
-// --- Base locale (IndexedDB) ------------------------------------------------
-// IndexedDB est la source de vérité hors ligne. Les quatre stores sont créés dès la v1
-// pour ne pas avoir à migrer la base aux sprints suivants.
-const DB_NAME = 'pulsetrack-db';
-const DB_VERSION = 1;
+// --- Données locales ------------------------------------------------------
+// IndexedDB, outbox et synchronisation vivent dans data.js, partagé avec le Service Worker.
+const {
+  db, getDeviceId, listSessions, getSession, saveSession, deleteSession,
+  countPending, syncPendingData, pullSessions,
+} = PulseData;
 
 const SESSION_TYPES = {
   course: 'Course',
@@ -158,101 +159,6 @@ const SESSION_TYPES = {
 const NOTE_MAX = 500;
 const DURATION_MAX = 24 * 60;
 const DISTANCE_MAX = 1000;
-
-const dbPromise = window.idb
-  ? idb.openDB(DB_NAME, DB_VERSION, {
-    upgrade(db, oldVersion) {
-      if (oldVersion < 1) {
-        const sessions = db.createObjectStore('sessions', { keyPath: 'id' });
-        sessions.createIndex('date', 'date');
-        sessions.createIndex('syncState', 'syncState');
-        // Opérations en attente d'envoi (sprint 4) : opId, type, payload, baseVersion.
-        const outbox = db.createObjectStore('outbox', { keyPath: 'id', autoIncrement: true });
-        outbox.createIndex('timestamp', 'timestamp');
-        // Photos réduites en Blob (sprint 6).
-        const photos = db.createObjectStore('photos', { keyPath: 'id' });
-        photos.createIndex('sessionId', 'sessionId');
-        // deviceId, préférences, drapeaux internes.
-        db.createObjectStore('meta', { keyPath: 'key' });
-      }
-    },
-    // Un autre onglet ouvre une version plus récente de la base : on lui laisse la place.
-    blocking(currentVersion, blockedVersion, event) {
-      event.target.close();
-    },
-  })
-  : Promise.reject(new Error('Librairie idb indisponible'));
-
-// Navigateurs anciens (iOS < 15.4) : crypto.randomUUID absent.
-function uuid() {
-  if (crypto.randomUUID) return crypto.randomUUID();
-  const b = crypto.getRandomValues(new Uint8Array(16));
-  b[6] = (b[6] & 0x0f) | 0x40;
-  b[8] = (b[8] & 0x3f) | 0x80;
-  const h = [...b].map((x) => x.toString(16).padStart(2, '0')).join('');
-  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
-}
-
-async function getMeta(key) {
-  const entry = await (await dbPromise).get('meta', key);
-  return entry ? entry.value : undefined;
-}
-
-async function setMeta(key, value) {
-  await (await dbPromise).put('meta', { key, value });
-}
-
-// Identité anonyme de l'appareil : rattache les séances côté serveur (sprint 4).
-async function getDeviceId() {
-  let deviceId = await getMeta('deviceId');
-  if (!deviceId) {
-    deviceId = uuid();
-    await setMeta('deviceId', deviceId);
-  }
-  return deviceId;
-}
-
-// Plus récentes d'abord. Les dates sont stockées en ISO UTC : l'ordre lexical est l'ordre chronologique.
-async function listSessions() {
-  const sessions = await (await dbPromise).getAllFromIndex('sessions', 'date');
-  return sessions.reverse();
-}
-
-async function getSession(id) {
-  return (await dbPromise).get('sessions', id);
-}
-
-async function saveSession(fields, id) {
-  const db = await dbPromise;
-  const now = new Date().toISOString();
-  const existing = id ? await db.get('sessions', id) : null;
-  const session = existing
-    ? { ...existing, ...fields, seed: false, updatedAt: now, syncState: 'pending' }
-    : {
-      id: uuid(),
-      ...fields,
-      location: null,
-      photoId: null,
-      version: null, // attribuée par le serveur, utilisée par If-Match (sprint 8)
-      seed: false,
-      createdAt: now,
-      updatedAt: now,
-      syncState: 'pending', // rien n'est encore envoyé : la synchronisation arrive au sprint 4
-    };
-  await db.put('sessions', session);
-  return session;
-}
-
-async function deleteSession(id) {
-  const db = await dbPromise;
-  const tx = db.transaction(['sessions', 'photos'], 'readwrite');
-  const photoKeys = await tx.objectStore('photos').index('sessionId').getAllKeys(id);
-  await Promise.all([
-    tx.objectStore('sessions').delete(id),
-    ...photoKeys.map((key) => tx.objectStore('photos').delete(key)),
-  ]);
-  await tx.done;
-}
 
 // --- Séances d'exemple ------------------------------------------------------
 // Les <li data-seed> du HTML initial servent aux robots ; on les lit avant le premier rendu.
@@ -275,8 +181,7 @@ const seedSessions = [...document.querySelectorAll('#session-list li[data-seed]'
 // Import unique : base vide ET jamais importé. Le drapeau évite de réimporter les exemples
 // si l'utilisateur les supprime tous. Les ids fixes (seed-1…) rendent l'import idempotent entre onglets.
 async function importSeedsOnce() {
-  const db = await dbPromise;
-  const tx = db.transaction(['sessions', 'meta'], 'readwrite');
+  const tx = (await db()).transaction(['sessions', 'meta'], 'readwrite');
   const sessions = tx.objectStore('sessions');
   const meta = tx.objectStore('meta');
   const [count, imported] = await Promise.all([sessions.count(), meta.get('seedsImported')]);
@@ -348,14 +253,35 @@ function describe(session) {
   return `${SESSION_TYPES[session.type] || session.type} du ${dateFormat.format(new Date(session.date))}`;
 }
 
+// État de synchronisation visible sur chaque séance (US4 : savoir ce qui n'est pas encore envoyé).
+const BADGES = {
+  pending: ['En attente', 'badge-pending'],
+  synced: ['Synchronisée', 'badge-synced'],
+  conflict: ['Conflit', 'badge-conflict'],
+  error: ['Refusée', 'badge-error'],
+};
+
+function renderBadge(session) {
+  const [label, className] = session.seed && session.version == null
+    ? ['Exemple', 'badge-seed']
+    : BADGES[session.syncState] || BADGES.pending;
+  const badge = document.createElement('span');
+  badge.className = `badge ${className}`;
+  badge.textContent = label;
+  return badge;
+}
+
 // Tout contenu saisi passe par textContent : aucune injection HTML possible.
 function renderItem(session) {
   const li = document.createElement('li');
   li.dataset.id = session.id;
 
+  const head = document.createElement('span');
+  head.className = 'session-head';
   const type = document.createElement('span');
   type.className = 'session-type';
   type.textContent = SESSION_TYPES[session.type] || session.type;
+  head.append(type, renderBadge(session));
 
   const meta = document.createElement('span');
   meta.className = 'session-meta';
@@ -366,7 +292,14 @@ function renderItem(session) {
   if (session.distanceKm != null) parts.push(`${kmFormat.format(session.distanceKm)} km`);
   meta.append(time, ` · ${parts.join(' · ')}`);
 
-  li.append(type, meta);
+  li.append(head, meta);
+
+  if (session.syncState === 'error' && session.syncError) {
+    const error = document.createElement('span');
+    error.className = 'session-error';
+    error.textContent = `Refusée par le serveur : ${session.syncError}`;
+    li.append(error);
+  }
 
   if (session.note) {
     const note = document.createElement('span');
@@ -406,6 +339,7 @@ function render() {
 async function refresh() {
   currentSessions = await listSessions();
   render();
+  await updateSyncStatus();
 }
 
 // Les autres onglets ouverts rafraîchissent leur liste après chaque écriture.
@@ -478,6 +412,7 @@ form.addEventListener('submit', async (event) => {
   formStatus.textContent = editing ? 'Séance modifiée.' : 'Séance enregistrée sur cet appareil.';
   await refresh();
   notifyChange();
+  requestSync();
 });
 
 cancelEditBtn.addEventListener('click', () => {
@@ -510,7 +445,86 @@ list.addEventListener('click', async (event) => {
     formStatus.textContent = 'Séance supprimée.';
     await refresh();
     notifyChange();
+    requestSync();
   }
+});
+
+// --- Synchronisation --------------------------------------------------------
+// Chemin principal : Background Sync (Chromium) — le Service Worker rejoue l'outbox même si la page
+// est fermée. Repli (Firefox, Safari) : la page rejoue l'outbox au démarrage, sur l'événement online
+// et au retour au premier plan. Le verrou de data.js empêche deux rejeux simultanés.
+const syncStatus = document.getElementById('sync-status');
+const syncNowBtn = document.getElementById('sync-now');
+let syncing = false;
+
+async function updateSyncStatus() {
+  const pending = await countPending();
+  syncNowBtn.hidden = pending === 0;
+  syncNowBtn.disabled = syncing;
+  if (pending === 0) {
+    syncStatus.textContent = '';
+  } else {
+    const what = pending > 1 ? `${pending} modifications en attente d'envoi` : "1 modification en attente d'envoi";
+    syncStatus.textContent = navigator.onLine ? `${what}.` : `${what} : elles partiront au retour du réseau.`;
+  }
+}
+
+function plural(n, word) {
+  return `${n} ${word}${n > 1 ? 's' : ''}`;
+}
+
+async function handleSyncResult(result) {
+  await refresh();
+  notifyChange();
+  if (result.sent) showToast(`${plural(result.sent, 'modification')} envoyée${result.sent > 1 ? 's' : ''} au serveur.`);
+  if (result.rejected.length) {
+    showToast(`${plural(result.rejected.length, 'séance')} refusée${result.rejected.length > 1 ? 's' : ''} par le serveur : ${result.rejected[0].message}`, 6000);
+  }
+  if (result.conflicts) showToast(`${plural(result.conflicts, 'conflit')} à résoudre.`, 6000);
+}
+
+async function runSync({ manual = false } = {}) {
+  if (syncing) return;
+  syncing = true;
+  syncNowBtn.disabled = true;
+  try {
+    const result = await syncPendingData();
+    await handleSyncResult(result);
+    // Lecture réseau d'abord ; en cas d'échec, IndexedDB reste affichée telle quelle.
+    if (!result.retry && (await pullSessions()).updated) await refresh();
+    if (manual && result.retry) showToast("Serveur injoignable : nouvel essai au retour du réseau.");
+  } catch (error) {
+    console.error(error);
+  } finally {
+    syncing = false;
+    await updateSyncStatus();
+  }
+}
+
+async function requestSync() {
+  const registration = 'serviceWorker' in navigator ? await navigator.serviceWorker.getRegistration() : null;
+  if (registration?.active && 'sync' in registration) {
+    try {
+      // Le navigateur déclenche l'événement sync dès que le réseau est disponible.
+      await registration.sync.register('sync-pending');
+      return;
+    } catch {
+      // Background Sync refusé (permission, mode navigation privée) : repli sur la page.
+    }
+  }
+  if (navigator.onLine) runSync();
+}
+
+syncNowBtn.addEventListener('click', () => runSync({ manual: true }));
+window.addEventListener('online', () => runSync());
+window.addEventListener('offline', updateSyncStatus);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && navigator.onLine) runSync();
+});
+
+// Résultat d'un rejeu fait par le Service Worker (Background Sync).
+navigator.serviceWorker?.addEventListener('message', (event) => {
+  if (event.data?.type === 'SYNC_RESULT') handleSyncResult(event.data.result);
 });
 
 // --- Démarrage --------------------------------------------------------------
@@ -521,6 +535,7 @@ resetForm();
     await getDeviceId();
     await importSeedsOnce();
     await refresh();
+    if (navigator.onLine) runSync();
   } catch (error) {
     // Sans IndexedDB (navigation privée stricte, stockage bloqué) : les exemples du HTML restent affichés.
     console.error(error);

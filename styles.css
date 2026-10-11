@@ -259,6 +259,58 @@ input[type="datetime-local"]::-webkit-date-and-time-value {
   overflow-wrap: anywhere;
   white-space: pre-line;
 }
+.session-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.session-error {
+  color: var(--danger);
+  font-size: 0.875rem;
+}
+
+/* Badges de synchronisation */
+.badge {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border: 1px solid currentColor;
+}
+.badge-pending {
+  color: var(--warning-text);
+  background: var(--warning-bg);
+  border-color: transparent;
+}
+.badge-synced {
+  color: var(--accent);
+}
+.badge-seed {
+  color: var(--muted);
+}
+.badge-conflict,
+.badge-error {
+  color: var(--danger);
+}
+
+.sync-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.sync-bar:has(.sync-status:empty):has(button[hidden]) {
+  display: none;
+}
+.sync-status {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
 .session-actions {
   display: flex;
   gap: 8px;

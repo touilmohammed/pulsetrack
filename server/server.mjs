@@ -9,7 +9,8 @@ import { createFileStore } from './store-file.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.PORT) || 3000;
-const api = createApi(await createFileStore(join(ROOT, 'server', 'data', 'db.json')));
+const DATA_FILE = process.env.DATA_FILE || join(ROOT, 'server', 'data', 'db.json');
+const api = createApi(await createFileStore(DATA_FILE));
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8',

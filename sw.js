@@ -1,6 +1,6 @@
 // Service Worker PulseTrack — écrit à la main (pas de Workbox).
 // À incrémenter à chaque déploiement qui modifie un fichier du shell.
-const CACHE_NAME = 'pulsetrack-v4';
+const CACHE_NAME = 'pulsetrack-v5';
 
 // Base IndexedDB et rejeu de l'outbox, partagés avec la page (Background Sync).
 importScripts('/vendor/idb.js', '/data.js');
@@ -11,6 +11,8 @@ const APP_SHELL = [
   '/',
   '/index.html',
   '/offline.html',
+  // Jumelle Markdown : lisible hors ligne. robots.txt et sitemap.xml ne servent qu'aux robots, en ligne.
+  '/sessions.md',
   '/styles.css',
   '/app.js',
   '/vendor/idb.js',

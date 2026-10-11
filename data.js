@@ -5,7 +5,7 @@
   'use strict';
 
   // Bonus activés sprint par sprint (voir plan) : désactivés tant que leur sprint n'est pas validé.
-  const FEATURES = { conflicts: true, push: false };
+  const FEATURES = { conflicts: true, push: true };
 
   const API_BASE = '/api';
   const DB_NAME = 'pulsetrack-db';

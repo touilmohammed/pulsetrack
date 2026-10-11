@@ -446,6 +446,62 @@ input[type="datetime-local"]::-webkit-date-and-time-value {
   margin-top: 12px;
 }
 
+/* Réglages : rappels */
+.push h3 {
+  margin: 0 0 4px;
+  font-size: 1rem;
+}
+.push p {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 0.9375rem;
+}
+.push-days {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 0 0 12px;
+  padding: 0;
+  border: 0;
+}
+.push-days legend {
+  width: 100%;
+  padding: 0;
+  margin-bottom: 4px;
+  font-weight: 600;
+  font-size: 0.9375rem;
+}
+.push-days label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  font-weight: 400;
+}
+.push-days input {
+  width: 20px;
+  min-height: 20px;
+  height: 20px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+.push-hour {
+  max-width: 200px;
+  margin-bottom: 12px;
+}
+.push-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.push .push-status {
+  margin: 8px 0 0;
+  color: var(--text);
+}
+.push .push-status:empty {
+  display: none;
+}
+
 /* Conflit de synchronisation */
 .conflict {
   margin: 12px 0;

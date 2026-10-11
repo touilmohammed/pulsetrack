@@ -150,7 +150,7 @@ if (isIos && !isStandalone()) {
 // --- Données locales ------------------------------------------------------
 // IndexedDB, outbox et synchronisation vivent dans data.js, partagé avec le Service Worker.
 const {
-  db, getDeviceId, listSessions, getSession, saveSession, deleteSession,
+  db, getDeviceId, getMeta, setMeta, listSessions, getSession, saveSession, deleteSession,
   getPhoto, countPending, syncPendingData, pullSessions, resolveConflict,
 } = PulseData;
 
@@ -816,6 +816,197 @@ function openDetailFromUrl() {
 }
 window.addEventListener('popstate', openDetailFromUrl);
 
+// --- Rappels d'entraînement (notifications push, bonus) --------------------------
+// Moment de la demande : clic sur « Activer les rappels », après le texte d'explication ; jamais au
+// chargement. Notification.requestPermission() est le premier appel du clic (Safari exige un geste direct).
+const pushSection = document.getElementById('push-settings');
+const pushHour = document.getElementById('push-hour');
+const pushEnable = document.getElementById('push-enable');
+const pushDisable = document.getElementById('push-disable');
+const pushTest = document.getElementById('push-test');
+const pushStatus = document.getElementById('push-status');
+const pushDayInputs = [...document.querySelectorAll('input[name="push-day"]')];
+const DAY_SHORT = ['dim.', 'lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.'];
+const pushSupported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+let remindersOn = false;
+let pushBusy = false;
+
+for (let h = 6; h <= 22; h++) pushHour.add(new Option(`${h} h`, String(h)));
+
+function readReminder() {
+  return {
+    days: pushDayInputs.filter((i) => i.checked).map((i) => Number(i.value)).sort(),
+    hour: Number(pushHour.value),
+    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  };
+}
+
+function describeReminder({ days, hour }) {
+  return `${[1, 2, 3, 4, 5, 6, 0].filter((d) => days.includes(d)).map((d) => DAY_SHORT[d]).join(' ')} à ${hour} h`;
+}
+
+function setPushStatus(message) {
+  pushStatus.textContent = message;
+}
+
+const PUSH_OFFLINE = 'Les rappels se règlent avec une connexion : ils seront modifiables au retour du réseau.';
+
+// Boutons selon l'état : actions réseau désactivées hors ligne (et le message l'explique).
+function renderPush() {
+  const offline = !navigator.onLine;
+  // Retour du réseau : le message hors ligne laisse place à l'état réel.
+  if (!offline && pushStatus.textContent === PUSH_OFFLINE) {
+    setPushStatus(remindersOn ? `Rappels activés : ${describeReminder(readReminder())}.` : '');
+  }
+  pushEnable.textContent = remindersOn ? 'Mettre à jour les rappels' : 'Activer les rappels';
+  pushEnable.disabled = pushBusy || offline || !pushSupported;
+  pushTest.hidden = !remindersOn;
+  pushDisable.hidden = !remindersOn;
+  pushTest.disabled = pushBusy || offline;
+  pushDisable.disabled = pushBusy || offline;
+  if (offline && pushSupported) setPushStatus(PUSH_OFFLINE);
+}
+
+async function pushApi(method, path, body) {
+  const response = await fetch(`/api/push/${path}`, {
+    method,
+    headers: { 'Content-Type': 'application/json', 'X-Device-Id': await getDeviceId() },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const data = response.status === 204 ? null : await response.json().catch(() => null);
+  if (!response.ok) {
+    const error = new Error(data?.error || `Erreur ${response.status}`);
+    error.status = response.status;
+    throw error;
+  }
+  return data;
+}
+
+function base64UrlToBytes(value) {
+  const base64 = value.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(value.length / 4) * 4, '=');
+  return Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+}
+
+async function withBusy(task) {
+  pushBusy = true;
+  renderPush();
+  try {
+    await task();
+  } finally {
+    pushBusy = false;
+    renderPush();
+  }
+}
+
+pushEnable.addEventListener('click', async () => {
+  const reminder = readReminder();
+  if (!reminder.days.length) {
+    setPushStatus('Choisissez au moins un jour.');
+    return;
+  }
+  // Premier appel du clic, sans attente préalable.
+  const permission = await Notification.requestPermission();
+  if (permission === 'denied') {
+    setPushStatus('Notifications refusées : les rappels ne pourront pas s\'afficher. Vous pouvez les autoriser dans les réglages du navigateur ; le reste de l\'app fonctionne normalement.');
+    return;
+  }
+  if (permission !== 'granted') {
+    setPushStatus('Rappels non activés : l\'autorisation n\'a pas été donnée.');
+    return;
+  }
+  await withBusy(async () => {
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      let subscription = await registration.pushManager.getSubscription();
+      if (!subscription) {
+        const { publicKey } = await pushApi('GET', 'key');
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: base64UrlToBytes(publicKey),
+        });
+      }
+      await pushApi('POST', 'subscribe', { subscription: subscription.toJSON(), reminder });
+      await setMeta('reminder', { days: reminder.days, hour: reminder.hour });
+      remindersOn = true;
+      setPushStatus(`Rappels activés : ${describeReminder(reminder)}.`);
+    } catch (error) {
+      console.error(error);
+      if (error.status === 503) setPushStatus('Les rappels ne sont pas encore disponibles sur le serveur.');
+      else if (error.status) setPushStatus(`Rappels non activés : ${error.message}`);
+      else setPushStatus('Rappels non activés : le service de notification du navigateur ne répond pas. Réessayez plus tard.');
+    }
+  });
+});
+
+pushDisable.addEventListener('click', () => withBusy(async () => {
+  try {
+    const registration = await navigator.serviceWorker.ready;
+    const subscription = await registration.pushManager.getSubscription();
+    if (subscription) {
+      // L'abonnement est retiré du serveur avant d'être résilié dans le navigateur.
+      await pushApi('DELETE', 'subscribe', { endpoint: subscription.endpoint });
+      await subscription.unsubscribe();
+    }
+    remindersOn = false;
+    setPushStatus('Rappels désactivés.');
+  } catch (error) {
+    console.error(error);
+    setPushStatus('Désactivation impossible pour le moment. Réessayez avec une connexion.');
+  }
+}));
+
+pushTest.addEventListener('click', () => withBusy(async () => {
+  try {
+    await pushApi('POST', 'test');
+    setPushStatus('Rappel de test envoyé : il doit arriver dans quelques secondes.');
+  } catch (error) {
+    console.error(error);
+    setPushStatus(error.status ? `Envoi impossible : ${error.message}` : 'Envoi impossible : serveur injoignable.');
+  }
+}));
+
+window.addEventListener('online', renderPush);
+window.addEventListener('offline', renderPush);
+
+async function initReminders() {
+  if (!PulseData.FEATURES.push) {
+    pushSection.hidden = true;
+    return;
+  }
+  const saved = await getMeta('reminder');
+  const reminder = saved ?? { days: [1, 3, 5], hour: 18 };
+  pushDayInputs.forEach((i) => { i.checked = reminder.days.includes(Number(i.value)); });
+  pushHour.value = String(reminder.hour);
+
+  if (!pushSupported) {
+    // iOS : le push n'existe que pour une app installée sur l'écran d'accueil (iOS 16.4 et plus).
+    setPushStatus(isIos && !isStandalone()
+      ? 'Sur iPhone, installez d\'abord PulseTrack sur l\'écran d\'accueil (Partager → Sur l\'écran d\'accueil), puis ouvrez-la depuis son icône pour activer les rappels.'
+      : 'Ce navigateur ne permet pas les notifications push : les rappels sont indisponibles.');
+    renderPush();
+    return;
+  }
+  const registration = await navigator.serviceWorker.getRegistration();
+  const subscription = await registration?.pushManager.getSubscription();
+  remindersOn = Boolean(subscription) && Notification.permission === 'granted';
+  if (remindersOn) setPushStatus(`Rappels activés : ${describeReminder(reminder)}.`);
+  else if (Notification.permission === 'denied') {
+    setPushStatus('Notifications bloquées pour PulseTrack : autorisez-les dans les réglages du navigateur pour recevoir des rappels.');
+  }
+  renderPush();
+}
+
+// Clic sur une notification : le Service Worker ramène l'app au premier plan sur « Nouvelle séance ».
+// Une saisie en cours n'est pas effacée.
+function focusNewSession() {
+  if (detailDialog.open) detailDialog.close();
+  form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  form.elements.type.focus({ preventScroll: true });
+}
+navigator.serviceWorker?.addEventListener('message', (event) => {
+  if (event.data?.type === 'OPEN_NEW_SESSION') focusNewSession();
+});
+
 // --- Synchronisation --------------------------------------------------------
 // Chemin principal : Background Sync (Chromium) — le Service Worker rejoue l'outbox même si la page
 // est fermée. Repli (Firefox, Safari) : la page rejoue l'outbox au démarrage, sur l'événement online
@@ -913,6 +1104,9 @@ resetForm();
     await importSeedsOnce();
     await refresh();
     openDetailFromUrl();
+    // Ouverte depuis une notification ou le raccourci « Nouvelle séance » du manifest.
+    if (location.hash === '#session-form') focusNewSession();
+    initReminders().catch(console.error);
     if (navigator.onLine) runSync();
   } catch (error) {
     // Sans IndexedDB (navigation privée stricte, stockage bloqué) : les exemples du HTML restent affichés.

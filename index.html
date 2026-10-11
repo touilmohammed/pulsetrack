@@ -204,6 +204,38 @@
       <p id="empty-state" class="empty-state" hidden>Aucune séance pour l'instant.</p>
     </section>
 
+    <section id="reglages" class="card" aria-labelledby="reglages-titre">
+      <h2 id="reglages-titre">Réglages</h2>
+      <!-- Rappels : la permission n'est demandée qu'au clic sur « Activer », après cette explication. -->
+      <section id="push-settings" class="push" aria-labelledby="push-titre">
+        <h3 id="push-titre">Rappels d'entraînement</h3>
+        <p>
+          Recevez une notification les jours et à l'heure de votre choix pour ne pas oublier votre séance.
+          Au clic sur « Activer », votre navigateur vous demandera l'autorisation d'afficher des notifications.
+        </p>
+        <fieldset class="push-days">
+          <legend>Jours</legend>
+          <label><input type="checkbox" name="push-day" value="1"> Lun</label>
+          <label><input type="checkbox" name="push-day" value="2"> Mar</label>
+          <label><input type="checkbox" name="push-day" value="3"> Mer</label>
+          <label><input type="checkbox" name="push-day" value="4"> Jeu</label>
+          <label><input type="checkbox" name="push-day" value="5"> Ven</label>
+          <label><input type="checkbox" name="push-day" value="6"> Sam</label>
+          <label><input type="checkbox" name="push-day" value="0"> Dim</label>
+        </fieldset>
+        <div class="field push-hour">
+          <label for="push-hour">Heure</label>
+          <select id="push-hour"></select>
+        </div>
+        <div class="push-actions">
+          <button type="button" id="push-enable" class="btn btn-primary">Activer les rappels</button>
+          <button type="button" id="push-test" class="btn btn-secondary" hidden>Envoyer un rappel de test</button>
+          <button type="button" id="push-disable" class="btn btn-secondary" hidden>Désactiver les rappels</button>
+        </div>
+        <p id="push-status" class="push-status" role="status"></p>
+      </section>
+    </section>
+
     <!-- Détail d'une séance (/?session=<id>, privé : jamais dans le HTML initial ni le sitemap). -->
     <dialog id="session-detail" class="detail" aria-labelledby="detail-title">
       <div class="detail-head">

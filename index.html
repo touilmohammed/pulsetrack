@@ -22,6 +22,17 @@
 <body>
   <a class="skip-link" href="#journal">Aller au journal</a>
 
+  <div id="offline-banner" class="banner banner-offline" role="status" hidden>
+    Mode hors ligne : vos séances sont enregistrées sur cet appareil.
+  </div>
+  <div id="update-banner" class="banner banner-update" role="alert" hidden>
+    <span>Nouvelle version disponible.</span>
+    <span class="banner-actions">
+      <button type="button" id="update-apply" class="btn btn-primary btn-small">Mettre à jour</button>
+      <button type="button" id="update-later" class="btn btn-secondary btn-small">Plus tard</button>
+    </span>
+  </div>
+
   <header class="site-header">
     <p class="brand"><span class="brand-mark" aria-hidden="true">●</span> PulseTrack</p>
     <button id="install-btn" class="btn btn-primary btn-small" type="button" hidden>Installer</button>
@@ -122,6 +133,9 @@
 
   <footer class="site-footer">
     <p>PulseTrack — TP M2 Informatique, Università di Corsica.</p>
+    <p class="app-version" id="app-version" hidden></p>
   </footer>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 </body>
 </html>

@@ -1,11 +1,105 @@
 // PulseTrack — logique de la page (vanilla JS, aucune dépendance hormis vendor/idb.js).
 
-// --- Service Worker ---------------------------------------------------------
-// Enregistré après le chargement pour ne pas concurrencer le rendu initial.
+// --- Toasts -----------------------------------------------------------------
+const toast = document.getElementById('toast');
+let toastTimer = null;
+
+function showToast(message, duration = 3500) {
+  toast.textContent = message;
+  toast.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { toast.hidden = true; }, duration);
+}
+
+// --- Réseau -----------------------------------------------------------------
+// navigator.onLine peut mentir (Wi-Fi sans Internet) : il sert à l'affichage,
+// les échecs réels de fetch seront traités par la synchronisation (sprint 4).
+const offlineBanner = document.getElementById('offline-banner');
+
+function updateNetworkStatus(announce) {
+  const offline = !navigator.onLine;
+  offlineBanner.hidden = !offline;
+  if (announce) showToast(offline ? 'Connexion perdue : mode hors ligne.' : 'Connexion rétablie.');
+}
+
+window.addEventListener('online', () => updateNetworkStatus(true));
+window.addEventListener('offline', () => updateNetworkStatus(true));
+updateNetworkStatus(false);
+
+// --- Service Worker et mises à jour -----------------------------------------
+// Stratégie : la nouvelle version est proposée, jamais imposée. L'utilisateur peut être
+// en train de saisir une séance ; un rechargement d'office perdrait son formulaire.
+const updateBanner = document.getElementById('update-banner');
+const appVersion = document.getElementById('app-version');
+let waitingWorker = null;
+let reloadAccepted = false;
+
+function showUpdateBanner(worker) {
+  waitingWorker = worker;
+  updateBanner.hidden = false;
+}
+
+document.getElementById('update-apply').addEventListener('click', () => {
+  if (!waitingWorker) return;
+  reloadAccepted = true;
+  waitingWorker.postMessage({ type: 'SKIP_WAITING' });
+});
+
+document.getElementById('update-later').addEventListener('click', () => {
+  // La bannière reviendra au prochain lancement : le Service Worker reste en attente.
+  updateBanner.hidden = true;
+});
+
+function displayVersion(worker) {
+  if (!worker) return;
+  const { port1, port2 } = new MessageChannel();
+  port1.onmessage = (event) => {
+    appVersion.textContent = `Version : ${event.data.version}`;
+    appVersion.hidden = false;
+  };
+  worker.postMessage({ type: 'GET_VERSION' }, [port2]);
+}
+
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch((error) => {
+  // Le nouveau Service Worker a pris le contrôle : on recharge pour charger le nouveau shell.
+  // Seulement si l'utilisateur l'a demandé : la toute première installation (clients.claim)
+  // déclenche aussi controllerchange, et ne doit pas recharger la page.
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    displayVersion(navigator.serviceWorker.controller);
+    if (reloadAccepted) window.location.reload();
+  });
+
+  // Enregistré après le chargement pour ne pas concurrencer le rendu initial.
+  window.addEventListener('load', async () => {
+    let registration;
+    try {
+      registration = await navigator.serviceWorker.register('/sw.js');
+    } catch (error) {
       console.warn('Enregistrement du Service Worker impossible :', error);
+      return;
+    }
+    displayVersion(navigator.serviceWorker.controller);
+
+    // Une version attendait déjà (proposée puis « Plus tard », ou téléchargée en arrière-plan).
+    if (registration.waiting && navigator.serviceWorker.controller) {
+      showUpdateBanner(registration.waiting);
+    }
+
+    registration.addEventListener('updatefound', () => {
+      const worker = registration.installing;
+      worker?.addEventListener('statechange', () => {
+        // « installed » avec un contrôleur existant = mise à jour (et non première installation).
+        if (worker.state === 'installed' && navigator.serviceWorker.controller) {
+          showUpdateBanner(worker);
+        }
+      });
+    });
+
+    // Une app installée reste ouverte longtemps sans navigation : on vérifie au retour au premier plan.
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && navigator.onLine) {
+        registration.update().catch(() => {});
+      }
     });
   });
 }

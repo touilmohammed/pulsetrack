@@ -1,23 +1,10 @@
 // Netlify Function (même origine que la PWA : aucune configuration CORS nécessaire).
-// Stockage persistant : Netlify Blobs, en cohérence forte pour que If-Match lise toujours la dernière version.
-import { getStore } from '@netlify/blobs';
+// Stockage : Netlify Blobs (netlify/lib/netlify-store.mjs).
 import { createApi } from '../../server/api.mjs';
+import { store, pushConfig } from '../lib/netlify-store.mjs';
 
-// Le store est ouvert à chaque appel (dans le contexte de la requête) ; l'API, elle, est créée une
-// seule fois par instance pour que son compteur de limitation de débit survive entre les requêtes.
-const blobs = () => getStore({ name: 'pulsetrack', consistency: 'strong' });
-const store = {
-  get: (key) => blobs().get(key, { type: 'json' }),
-  set: (key, value) => blobs().setJSON(key, value),
-  delete: (key) => blobs().delete(key),
-  async list(prefix) {
-    const b = blobs();
-    const { blobs: entries } = await b.list({ prefix });
-    const values = await Promise.all(entries.map((entry) => b.get(entry.key, { type: 'json' })));
-    return values.filter(Boolean);
-  },
-};
-const api = createApi(store);
+// Créée une seule fois par instance, pour que le compteur de limitation de débit survive entre les requêtes.
+const api = createApi(store, { push: pushConfig() });
 
 export default (request) => api(request);
 

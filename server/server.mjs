@@ -1,16 +1,51 @@
 // Serveur de développement : sert la PWA et l'API sur la même origine, comme Netlify en production.
 // Usage : npm start  (PORT=3000 par défaut, données dans server/data/db.json)
 import { createServer } from 'node:http';
-import { readFile, stat } from 'node:fs/promises';
+import { readFile, stat, writeFile, mkdir } from 'node:fs/promises';
 import { extname, join, normalize, sep, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import webpush from 'web-push';
 import { createApi } from './api.mjs';
 import { createFileStore } from './store-file.mjs';
+import { runReminders, createSender } from './push.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.PORT) || 3000;
 const DATA_FILE = process.env.DATA_FILE || join(ROOT, 'server', 'data', 'db.json');
-const api = createApi(await createFileStore(DATA_FILE));
+
+// Clés VAPID de développement : générées au premier lancement à côté des données (ignorées par Git).
+// En production, elles viennent des variables d'environnement Netlify.
+async function loadVapidKeys() {
+  if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
+    return { publicKey: process.env.VAPID_PUBLIC_KEY, privateKey: process.env.VAPID_PRIVATE_KEY };
+  }
+  const file = join(dirname(DATA_FILE), 'vapid.json');
+  try {
+    return JSON.parse(await readFile(file, 'utf8'));
+  } catch {
+    const keys = webpush.generateVAPIDKeys();
+    await mkdir(dirname(file), { recursive: true });
+    await writeFile(file, JSON.stringify(keys, null, 2));
+    return keys;
+  }
+}
+const vapid = await loadVapidKeys();
+const push = {
+  publicKey: vapid.publicKey,
+  sendNotification: createSender(webpush, {
+    subject: process.env.VAPID_SUBJECT || 'https://pulsetrackisco.netlify.app',
+    publicKey: vapid.publicKey,
+    privateKey: vapid.privateKey,
+  }),
+  // Tests : un faux service de push local (ex. PUSH_EXTRA_HOSTS=localhost).
+  extraHosts: process.env.PUSH_EXTRA_HOSTS ? process.env.PUSH_EXTRA_HOSTS.split(',') : [],
+};
+
+const store = await createFileStore(DATA_FILE);
+const api = createApi(store, { push });
+
+// Comme la Scheduled Function de production : rappels dus vérifiés toutes les heures.
+setInterval(() => runReminders(store, push.sendNotification).catch(console.error), 60 * 60 * 1000).unref();
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8',

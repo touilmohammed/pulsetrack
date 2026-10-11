@@ -2,7 +2,10 @@
 // Utilisée par netlify/functions/api.mjs (Netlify Blobs) et server/server.mjs (fichier JSON, en local).
 //
 // Le stockage est injecté : { get(key), set(key, value), delete(key), list(prefix) }.
-// Clés : sessions/<deviceId>/<sessionId> et ops/<deviceId>/<opId> (réponses mémorisées pour l'idempotence).
+// Clés : sessions/<deviceId>/<sessionId> et ops/<deviceId>/<opId> (réponses mémorisées pour l'idempotence),
+// push/<deviceId>/<id> (abonnements aux rappels, voir push.mjs).
+
+import { validateSubscription, subscriptionId, deliver, testPayload } from './push.mjs';
 
 const TYPES = new Set(['course', 'velo', 'marche', 'musculation', 'autre']);
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -103,6 +106,9 @@ export function createApi(store, {
   // Sur Netlify, chaque instance de la fonction a son propre compteur : c'est un garde-fou contre
   // une boucle d'envoi ou un abus simple, pas une protection contre une attaque distribuée.
   rateLimit = { windowMs: 60_000, max: 120 },
+  // Rappels push : { publicKey, sendNotification(subscription, payload, options), extraHosts }.
+  // Sans clé VAPID configurée, les routes /api/push/* répondent 503 et l'app l'explique à l'utilisateur.
+  push = null,
 } = {}) {
   const sessionKey = (deviceId, id) => `sessions/${deviceId}/${id}`;
   const writes = new Map();
@@ -184,13 +190,51 @@ export function createApi(store, {
     return json(204, null);
   }
 
+  // --- Rappels push ---
+  function requirePush() {
+    if (!push?.publicKey || !push?.sendNotification) throw new HttpError(503, 'Rappels non configurés sur le serveur.');
+  }
+
+  async function pushRoute(action, method, deviceId, request) {
+    requirePush();
+    // La clé publique VAPID n'est pas un secret : le navigateur en a besoin pour s'abonner.
+    if (action === 'key' && method === 'GET') return json(200, { publicKey: push.publicKey });
+    checkRateLimit(deviceId);
+
+    if (action === 'subscribe' && method === 'POST') {
+      const { errors, value } = validateSubscription(await readJson(request), { extraHosts: push.extraHosts });
+      if (errors.length) throw new HttpError(422, `Abonnement refusé : ${errors.join(', ')}.`);
+      const id = await subscriptionId(value.subscription.endpoint);
+      const key = `push/${deviceId}/${id}`;
+      const existing = await store.get(key);
+      await store.set(key, { id, deviceId, ...value, lastSent: existing?.lastSent ?? null, createdAt: existing?.createdAt ?? now() });
+      return json(existing ? 200 : 201, { reminder: value.reminder });
+    }
+    if (action === 'subscribe' && method === 'DELETE') {
+      const body = await readJson(request);
+      if (typeof body?.endpoint !== 'string') throw new HttpError(400, 'endpoint manquant.');
+      await store.delete(`push/${deviceId}/${await subscriptionId(body.endpoint)}`);
+      return json(204, null);
+    }
+    if (action === 'test' && method === 'POST') {
+      const records = await store.list(`push/${deviceId}/`);
+      if (!records.length) throw new HttpError(404, 'Aucun abonnement aux rappels pour cet appareil.');
+      const results = await Promise.all(records.map((r) => deliver(store, r, testPayload(), push.sendNotification)));
+      const count = (k) => results.filter((x) => x === k).length;
+      return json(200, { sent: count('sent'), expired: count('expired'), failed: count('failed') });
+    }
+    throw new HttpError(405, 'Méthode non autorisée.');
+  }
+
   async function route(request) {
     const url = new URL(request.url);
+    const pushMatch = url.pathname.match(/^\/api\/push\/(key|subscribe|test)\/?$/);
     const match = url.pathname.match(/^\/api\/sessions(?:\/([^/]+))?\/?$/);
-    if (!match) throw new HttpError(404, 'Route inconnue.');
+    if (!match && !pushMatch) throw new HttpError(404, 'Route inconnue.');
 
     const deviceId = request.headers.get('X-Device-Id') ?? '';
     if (!UUID_RE.test(deviceId)) throw new HttpError(400, 'En-tête X-Device-Id manquant ou invalide.');
+    if (pushMatch) return pushRoute(pushMatch[1], request.method, deviceId, request);
 
     const id = match[1] ? decodeURIComponent(match[1]) : null;
     if (id !== null && !SESSION_ID_RE.test(id)) throw new HttpError(400, 'id de séance invalide.');

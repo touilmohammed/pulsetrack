@@ -1,6 +1,9 @@
 // Service Worker PulseTrack — écrit à la main (pas de Workbox).
 // À incrémenter à chaque déploiement qui modifie un fichier du shell.
-const CACHE_NAME = 'pulsetrack-v3';
+const CACHE_NAME = 'pulsetrack-v4';
+
+// Base IndexedDB et rejeu de l'outbox, partagés avec la page (Background Sync).
+importScripts('/vendor/idb.js', '/data.js');
 
 // App Shell pré-caché à l'installation. sw.js n'y figure jamais :
 // le navigateur doit toujours pouvoir récupérer sa nouvelle version sur le réseau.
@@ -11,6 +14,7 @@ const APP_SHELL = [
   '/styles.css',
   '/app.js',
   '/vendor/idb.js',
+  '/data.js',
   '/manifest.json',
   '/icons/icon-32.png',
   '/icons/icon-192.png',
@@ -52,11 +56,13 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const { request } = event;
-  // Les écritures ne sont jamais mises en cache (outbox au sprint 4).
+  // Écritures : jamais mises en cache, elles passent par l'outbox de data.js.
   if (request.method !== 'GET') return;
   const url = new URL(request.url);
-  // Autres origines (API, CDN) : le navigateur gère seul.
+  // Autres origines : le navigateur gère seul.
   if (url.origin !== self.location.origin) return;
+  // API : réseau uniquement. En cas d'échec, la page garde les données d'IndexedDB.
+  if (url.pathname.startsWith('/api/')) return;
 
   if (request.mode === 'navigate') {
     event.respondWith(staleWhileRevalidate(event, url));
@@ -102,4 +108,18 @@ async function cacheFirst(request) {
     cache.put(request, response.clone());
   }
   return response;
+}
+
+// --- Background Sync (Chromium) ---------------------------------------------
+// Déclenché par le navigateur dès que le réseau revient, même page fermée.
+// Si des opérations restent bloquées par le réseau, l'échec de waitUntil demande un nouvel essai.
+self.addEventListener('sync', (event) => {
+  if (event.tag === 'sync-pending') event.waitUntil(replayOutbox());
+});
+
+async function replayOutbox() {
+  const result = await PulseData.syncPendingData();
+  const clients = await self.clients.matchAll({ type: 'window' });
+  clients.forEach((client) => client.postMessage({ type: 'SYNC_RESULT', result }));
+  if (result.retry) throw new Error('Outbox non vidée : nouvel essai');
 }

@@ -16,6 +16,7 @@
   <meta name="apple-mobile-web-app-title" content="PulseTrack">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="stylesheet" href="/styles.css">
+  <script src="/vendor/idb.js" defer></script>
   <script src="/app.js" defer></script>
 </head>
 <body>
@@ -68,32 +69,54 @@
           </div>
         </div>
         <div class="field">
-          <label for="note">Note</label>
-          <textarea id="note" name="note" rows="3" maxlength="500"></textarea>
+          <label for="note">Note <span class="field-hint" id="note-count">0 / 500</span></label>
+          <textarea id="note" name="note" rows="3" maxlength="500" aria-describedby="note-count"></textarea>
         </div>
-        <button type="submit" class="btn btn-primary">Enregistrer la séance</button>
+        <input type="hidden" id="session-id" name="id">
+        <p id="form-error" class="form-error" role="alert" hidden></p>
+        <div class="form-actions">
+          <button type="submit" id="submit-btn" class="btn btn-primary">Enregistrer la séance</button>
+          <button type="button" id="cancel-edit" class="btn btn-secondary" hidden>Annuler</button>
+        </div>
+        <p id="form-status" class="form-status" role="status"></p>
       </form>
     </section>
 
     <section id="journal" class="card" aria-labelledby="journal-titre">
-      <h2 id="journal-titre">Exemples de séances</h2>
+      <div class="journal-head">
+        <h2 id="journal-titre">Journal des séances</h2>
+        <div class="field filter">
+          <label for="type-filter">Filtrer</label>
+          <select id="type-filter">
+            <option value="">Toutes</option>
+            <option value="course">Course</option>
+            <option value="velo">Vélo</option>
+            <option value="marche">Marche</option>
+            <option value="musculation">Musculation</option>
+            <option value="autre">Autre</option>
+          </select>
+        </div>
+      </div>
+      <!-- Séances d'exemple : lisibles par les robots sans JavaScript,
+           importées une seule fois dans IndexedDB au premier lancement. -->
       <ul id="session-list" class="session-list">
-        <li data-seed="seed-1">
+        <li data-seed="seed-1" data-type="course" data-date="2026-10-04T09:30:00+02:00" data-duration="45" data-distance="8.2">
           <span class="session-type">Course</span>
-          <span class="session-meta">45 min · 8,2 km</span>
+          <span class="session-meta"><time datetime="2026-10-04T09:30:00+02:00">4 oct. 2026</time> · 45 min · 8,2 km</span>
           <span class="session-note">Sortie trail sur le sentier de la Restonica, sans réseau au-dessus du lac.</span>
         </li>
-        <li data-seed="seed-2">
+        <li data-seed="seed-2" data-type="musculation" data-date="2026-10-06T18:00:00+02:00" data-duration="60">
           <span class="session-type">Musculation</span>
-          <span class="session-meta">60 min</span>
+          <span class="session-meta"><time datetime="2026-10-06T18:00:00+02:00">6 oct. 2026</time> · 60 min</span>
           <span class="session-note">Séance haut du corps en salle au sous-sol : 5 séries de tractions et de développé couché.</span>
         </li>
-        <li data-seed="seed-3">
+        <li data-seed="seed-3" data-type="velo" data-date="2026-10-08T16:15:00+02:00" data-duration="95" data-distance="38">
           <span class="session-type">Vélo</span>
-          <span class="session-meta">95 min · 38 km</span>
+          <span class="session-meta"><time datetime="2026-10-08T16:15:00+02:00">8 oct. 2026</time> · 95 min · 38 km</span>
           <span class="session-note">Boucle de Corte par la vallée du Tavignano, retour au crépuscule.</span>
         </li>
       </ul>
+      <p id="empty-state" class="empty-state" hidden>Aucune séance pour l'instant.</p>
     </section>
   </main>
 

@@ -9,6 +9,7 @@
   --accent: #0f766e;
   --accent-text: #ffffff;
   --focus: #b45309;
+  --danger: #b91c1c;
   --radius: 12px;
   --space: 16px;
   color-scheme: light dark;
@@ -24,6 +25,7 @@
     --accent: #2dd4bf;
     --accent-text: #04201c;
     --focus: #fbbf24;
+    --danger: #f87171;
   }
 }
 
@@ -191,6 +193,40 @@ input[type="datetime-local"]::-webkit-date-and-time-value {
   background: var(--accent);
   color: var(--accent-text);
 }
+.btn-secondary {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+.btn-danger {
+  background: transparent;
+  color: var(--danger);
+  border: 1px solid var(--border);
+}
+
+.form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.field-hint {
+  float: right;
+  font-weight: 400;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.form-error {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: var(--danger);
+  border: 1px solid currentColor;
+}
+.form-status {
+  margin: 0;
+  min-height: 1.5em;
+  color: var(--muted);
+}
 
 /* Liste des séances */
 .session-list {
@@ -217,6 +253,40 @@ input[type="datetime-local"]::-webkit-date-and-time-value {
 }
 .session-note {
   overflow-wrap: anywhere;
+  white-space: pre-line;
+}
+.session-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+.session-actions .btn {
+  padding: 6px 12px;
+  font-size: 0.875rem;
+}
+
+.journal-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin-bottom: 12px;
+}
+.journal-head h2 {
+  margin: 0;
+}
+.filter {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 8px;
+}
+.filter select {
+  width: auto;
+}
+.empty-state {
+  margin: 0;
+  color: var(--muted);
 }
 
 .site-footer {

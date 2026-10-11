@@ -395,9 +395,13 @@ En mode sans interface, le navigateur n'a pas de service de push : le test de bo
 | T3 — Installation sur l'écran d'accueil, lancement en standalone | ✓ |
 | T4 / T5 — Mode avion : shell, séances, création | ✓ |
 | T6 — Bannière de mise à jour (v5 → v6), saisie conservée | ✓ |
+| T6 bis — Mise à jour v8 → v9 après le correctif du § 5, dans l'app installée et dans Safari | ✓ |
 | T7 / T8 — Séance créée en avion, envoyée au retour du réseau (Safari : repli `online`) | ✓ |
+| T9 — Conflit : deux onglets en avion ouvrent la même séance, chacun enregistre sa version ; badge « Conflit », comparaison, « Garder la mienne » / « Prendre la leur » | ✓ |
 | T15 — Position, photo, partage : accepter puis refuser | ✓ |
-| T16 — Rappel push (app installée, iOS 16.4+) : permission au clic, rappel de test reçu app en arrière-plan, clic → « Nouvelle séance » | ✓ |
+| T16 — Rappel push (app installée, iOS 16.4+) : permission au clic, rappel de test reçu app en arrière-plan, clic → « Nouvelle séance » ; toujours actif après la mise à jour v9 | ✓ |
+
+Deux onglets qui modifient **l'un après l'autre** la même séance ne créent pas de conflit : ils partagent la base IndexedDB et se préviennent par `BroadcastChannel`, donc le second repart de la version du premier. Le conflit n'apparaît que si les deux formulaires ont été ouverts sur la même version, comme le prévoit le § 6.7.
 
 ## 12. Limites connues et écarts
 

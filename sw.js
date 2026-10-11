@@ -1,6 +1,6 @@
 // Service Worker PulseTrack — écrit à la main (pas de Workbox).
 // À incrémenter à chaque déploiement qui modifie un fichier du shell.
-const CACHE_NAME = 'pulsetrack-v1';
+const CACHE_NAME = 'pulsetrack-v2';
 
 // App Shell pré-caché à l'installation. sw.js n'y figure jamais :
 // le navigateur doit toujours pouvoir récupérer sa nouvelle version sur le réseau.
@@ -10,6 +10,7 @@ const APP_SHELL = [
   '/offline.html',
   '/styles.css',
   '/app.js',
+  '/vendor/idb.js',
   '/manifest.json',
   '/icons/icon-32.png',
   '/icons/icon-192.png',

@@ -120,6 +120,9 @@ main,
 }
 .lead {
   color: var(--muted);
+  margin: 0 0 12px;
+}
+.features {
   margin: 0 0 24px;
 }
 

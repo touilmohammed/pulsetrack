@@ -1,0 +1,20 @@
+# PulseTrack
+
+> PulseTrack est une application web progressive (PWA) gratuite et en français pour tenir un journal d'entraînement sportif sans réseau : course, vélo, marche, musculation. Les séances sont enregistrées sur l'appareil, consultables hors ligne, puis synchronisées automatiquement au retour de la connexion.
+
+PulseTrack vise les sportifs amateurs qui s'entraînent là où le réseau est mauvais (montagne, forêt, salle en sous-sol), par exemple en Corse. Elle s'installe depuis le navigateur sur l'écran d'accueil (Android, iOS, ordinateur), sans store, sans compte et sans publicité. Projet réalisé dans le cadre du Master 2 Informatique de l'Università di Corsica.
+
+## Contenu
+
+- [Présentation et séances d'exemple (Markdown)](https://pulsetrackisco.netlify.app/sessions.md) : version texte de la page d'accueil, faite pour les agents.
+- [Application](https://pulsetrackisco.netlify.app/) : page d'accueil et journal (le journal de l'utilisateur est privé et n'est jamais publié).
+
+## Fonctionnement
+
+- Hors ligne : l'interface et les séances restent disponibles en mode avion (Service Worker et IndexedDB).
+- Synchronisation : les séances saisies hors ligne partent au serveur au retour du réseau, sans doublon.
+- Mise à jour : une nouvelle version est proposée à l'utilisateur, jamais imposée pendant une saisie.
+
+## Optional
+
+- [Sitemap](https://pulsetrackisco.netlify.app/sitemap.xml)

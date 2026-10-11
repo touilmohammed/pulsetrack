@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Seule la vitrine est indexable : sessions.md (noindex) et les séances privées n'y figurent pas.
+     lastmod = date exacte du dernier déploiement qui modifie la page (à mettre à jour avec CACHE_NAME). -->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://pulsetrackisco.netlify.app/</loc>
+    <lastmod>2026-10-11</lastmod>
+  </url>
+</urlset>

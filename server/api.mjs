@@ -97,8 +97,32 @@ function parseIfMatch(header) {
 
 const etag = (session) => ({ ETag: `"${session.version}"` });
 
-export function createApi(store, { now = () => new Date().toISOString() } = {}) {
+export function createApi(store, {
+  now = () => new Date().toISOString(),
+  // Limitation de débit des écritures, par appareil (fenêtre fixe, en mémoire).
+  // Sur Netlify, chaque instance de la fonction a son propre compteur : c'est un garde-fou contre
+  // une boucle d'envoi ou un abus simple, pas une protection contre une attaque distribuée.
+  rateLimit = { windowMs: 60_000, max: 120 },
+} = {}) {
   const sessionKey = (deviceId, id) => `sessions/${deviceId}/${id}`;
+  const writes = new Map();
+
+  function checkRateLimit(deviceId) {
+    if (!rateLimit) return;
+    const t = Date.now();
+    const entry = writes.get(deviceId);
+    if (!entry || t - entry.start >= rateLimit.windowMs) {
+      writes.set(deviceId, { start: t, count: 1 });
+      if (writes.size > 10_000) writes.clear();
+      return;
+    }
+    entry.count++;
+    if (entry.count > rateLimit.max) {
+      const error = new HttpError(429, 'Trop de requêtes : réessayez dans un instant.');
+      error.retryAfter = Math.ceil((entry.start + rateLimit.windowMs - t) / 1000);
+      throw error;
+    }
+  }
 
   async function list(deviceId) {
     const sessions = await store.list(`sessions/${deviceId}/`);
@@ -170,6 +194,7 @@ export function createApi(store, { now = () => new Date().toISOString() } = {}) 
     if (id !== null && !SESSION_ID_RE.test(id)) throw new HttpError(400, 'id de séance invalide.');
 
     const method = request.method;
+    if (method !== 'GET') checkRateLimit(deviceId);
     if (method === 'GET') return id ? get(deviceId, id) : list(deviceId);
     if (method === 'POST' && !id) return idempotent(deviceId, request, () => create(deviceId, request));
     if (method === 'PUT' && id) return idempotent(deviceId, request, () => update(deviceId, id, request));
@@ -202,7 +227,9 @@ export function createApi(store, { now = () => new Date().toISOString() } = {}) 
     try {
       return await route(request);
     } catch (error) {
-      if (error instanceof HttpError) return json(error.status, { error: error.message });
+      if (error instanceof HttpError) {
+        return json(error.status, { error: error.message }, error.retryAfter ? { 'Retry-After': String(error.retryAfter) } : {});
+      }
       console.error(error);
       return json(500, { error: 'Erreur interne.' });
     }

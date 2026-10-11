@@ -5,6 +5,51 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>PulseTrack — journal sportif hors ligne</title>
   <meta name="description" content="PulseTrack est un journal d'entraînement qui fonctionne sans réseau : enregistrez vos séances de course, vélo, marche ou musculation, même en montagne.">
+  <!-- URL canonique fixe : /?session=<id> (séance privée) n'est jamais une page à indexer. -->
+  <link rel="canonical" href="https://pulsetrackisco.netlify.app/">
+  <link rel="alternate" type="text/markdown" href="https://pulsetrackisco.netlify.app/sessions.md" title="PulseTrack en Markdown">
+
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="PulseTrack">
+  <meta property="og:locale" content="fr_FR">
+  <meta property="og:title" content="PulseTrack — journal sportif hors ligne">
+  <meta property="og:description" content="Enregistrez vos séances de course, vélo, marche ou musculation sans réseau : elles se synchronisent au retour de la connexion.">
+  <meta property="og:url" content="https://pulsetrackisco.netlify.app/">
+  <meta property="og:image" content="https://pulsetrackisco.netlify.app/images/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Logo PulseTrack : un tracé de pouls blanc sur fond sarcelle">
+  <meta name="twitter:card" content="summary_large_image">
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "PulseTrack",
+    "alternateName": "PulseTrack — journal sportif hors ligne",
+    "url": "https://pulsetrackisco.netlify.app/",
+    "description": "Journal d'entraînement installable qui fonctionne sans réseau : séances de course, vélo, marche et musculation enregistrées sur l'appareil, puis synchronisées au retour de la connexion.",
+    "applicationCategory": "HealthApplication",
+    "applicationSubCategory": "Suivi d'entraînement sportif",
+    "operatingSystem": "Web, Android, iOS",
+    "browserRequirements": "Navigateur récent avec Service Worker et IndexedDB",
+    "inLanguage": "fr",
+    "isAccessibleForFree": true,
+    "image": "https://pulsetrackisco.netlify.app/images/og-image.png",
+    "screenshot": "https://pulsetrackisco.netlify.app/images/og-image.png",
+    "featureList": [
+      "Saisie de séances sans réseau",
+      "Synchronisation automatique au retour du réseau",
+      "Installation sur l'écran d'accueil"
+    ],
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "EUR"
+    }
+  }
+  </script>
+
   <meta name="theme-color" content="#0f766e" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#0b1f1d" media="(prefers-color-scheme: dark)">
   <meta name="color-scheme" content="light dark">
@@ -46,6 +91,11 @@
         PulseTrack enregistre vos séances de course, de vélo, de marche ou de musculation
         directement sur votre téléphone. Pas de 4G sur le sentier ou à la salle ?
         Vos séances restent disponibles et partent au serveur dès le retour du réseau.
+      </p>
+      <p class="features">
+        Gratuit, sans compte et sans publicité. Installez l'app sur votre écran d'accueil,
+        notez type, durée, distance et ressenti, et retrouvez tout votre historique hors ligne. Pas de compte : vos séances sont rattachées à un identifiant
+        anonyme propre à votre appareil.
       </p>
       <p id="ios-install-hint" class="hint" hidden>
         Pour installer PulseTrack sur iPhone : touchez <strong>Partager</strong>,

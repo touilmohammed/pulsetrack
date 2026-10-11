@@ -26,7 +26,33 @@ const TYPES = {
   '.xml': 'application/xml; charset=utf-8',
 };
 // Jamais servis : code serveur, fonctions, dépendances, fichiers cachés (.git, .env…).
-const PRIVATE = new Set(['server', 'netlify', 'node_modules']);
+const PRIVATE = new Set(['server', 'netlify', 'node_modules', 'scripts', 'dist', '_headers']);
+
+// Même fichier _headers que Netlify : un chemin (/*, /fichier), puis ses en-têtes indentés.
+// Les règles s'appliquent dans l'ordre ; une règle plus bas remplace un en-tête déjà posé.
+async function loadHeaderRules() {
+  const rules = [];
+  let text = '';
+  try {
+    text = await readFile(join(ROOT, '_headers'), 'utf8');
+  } catch {
+    return rules;
+  }
+  for (const line of text.split(/\r?\n/)) {
+    if (!line.trim() || line.trim().startsWith('#')) continue;
+    if (!/^\s/.test(line)) {
+      const pattern = line.trim();
+      const regex = new RegExp(`^${pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')}$`);
+      rules.push({ regex, headers: {} });
+    } else if (rules.length) {
+      const i = line.indexOf(':');
+      rules.at(-1).headers[line.slice(0, i).trim()] = line.slice(i + 1).trim();
+    }
+  }
+  return rules;
+}
+const headerRules = await loadHeaderRules();
+const headersFor = (pathname) => Object.assign({}, ...headerRules.filter((r) => r.regex.test(pathname)).map((r) => r.headers));
 
 async function serveStatic(pathname, res) {
   const relative = normalize(decodeURIComponent(pathname === '/' ? '/index.html' : pathname)).replace(/^[/\\]+/, '');
@@ -42,6 +68,7 @@ async function serveStatic(pathname, res) {
     'Content-Type': TYPES[extname(file)] ?? 'application/octet-stream',
     // Comme Netlify : toujours revalidé, indispensable pour la détection des mises à jour du SW.
     'Cache-Control': 'public, max-age=0, must-revalidate',
+    ...headersFor(pathname),
   });
   res.end(await readFile(file));
   return true;

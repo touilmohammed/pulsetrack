@@ -1,0 +1,25 @@
+# En-têtes HTTP Netlify (appliqués aussi par server/server.mjs en local).
+
+# Sécurité, pour toutes les pages.
+# CSP : tout le code vient de l'origine (idb est copiée dans vendor/), aucun script inline exécutable
+# (le JSON-LD n'est pas exécuté), images locales ou blob: (photos en mémoire, sprint 6).
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self'; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: geolocation=(self), camera=(self), microphone=(), payment=(), usb=()
+  X-Frame-Options: DENY
+
+# Jumelle Markdown : lisible par les agents, mais jamais indexée (contenu dupliqué de la vitrine).
+/sessions.md
+  Content-Type: text/markdown; charset=utf-8
+  X-Robots-Tag: noindex
+  Link: <https://pulsetrackisco.netlify.app/>; rel="canonical"
+
+/llms.txt
+  Content-Type: text/plain; charset=utf-8
+
+# Le Service Worker doit toujours être revalidé : c'est lui qui détecte les nouvelles versions.
+/sw.js
+  Cache-Control: no-cache

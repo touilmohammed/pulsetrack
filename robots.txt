@@ -1,0 +1,47 @@
+# robots.txt — PulseTrack
+# Le contenu public (vitrine, séances d'exemple, jumelle Markdown) est fait pour être lu.
+# Jamais exposés : l'API (/api/) et les URL de séance privées (/?session=<id>).
+# Un robot qui trouve un groupe à son nom ignore le groupe « * » : chaque groupe répète les exclusions.
+
+# Moteurs de recherche classiques — autorisés : c'est l'objectif SEO de la vitrine.
+User-agent: Googlebot
+User-agent: Bingbot
+User-agent: DuckDuckBot
+User-agent: Applebot
+Allow: /
+Disallow: /api/
+Disallow: /*?session=
+
+# Recherche et réponses des assistants IA (citent la source, renvoient vers le site) — autorisés : objectif GEO.
+User-agent: OAI-SearchBot
+User-agent: ChatGPT-User
+User-agent: Claude-SearchBot
+User-agent: Claude-User
+User-agent: PerplexityBot
+User-agent: Perplexity-User
+Allow: /
+Disallow: /api/
+Disallow: /*?session=
+
+# Entraînement des modèles des grands assistants — autorisés : la vitrine est publique et ne contient
+# aucune donnée personnelle ; être connu des assistants sert la découvrabilité de l'app.
+User-agent: GPTBot
+User-agent: ClaudeBot
+User-agent: Google-Extended
+User-agent: Applebot-Extended
+Allow: /
+Disallow: /api/
+Disallow: /*?session=
+
+# Collecte massive sans attribution ni bénéfice pour le site — refusés.
+User-agent: CCBot
+User-agent: Bytespider
+Disallow: /
+
+# Tous les autres robots — mêmes règles que les moteurs de recherche.
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /*?session=
+
+Sitemap: https://pulsetrackisco.netlify.app/sitemap.xml

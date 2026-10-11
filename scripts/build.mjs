@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const DIST = join(ROOT, 'dist');
-const PUBLIC_DIRS = ['icons', 'vendor'];
+const PUBLIC_DIRS = ['icons', 'images', 'vendor'];
 const PUBLIC_FILE = /^(?!package(-lock)?\.json$).+\.(html|css|js|json|txt|xml)$|^sessions\.md$|^_headers$/;
 
 await rm(DIST, { recursive: true, force: true });

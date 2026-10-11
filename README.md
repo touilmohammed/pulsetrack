@@ -73,4 +73,5 @@ Avant chaque déploiement qui touche un fichier du shell : incrémenter `CACHE_N
 | 6 | Capacités : position, photo, partage | v0.6 |
 | 7 | Document technique, tests automatisés | v1.0 |
 | 8 | Bonus : conflits `If-Match`, bannière de résolution | v1.1 |
-| 9 | Bonus : rappels par notifications push | v1.1 |
+| 9 | Bonus : rappels par notifications push | v1.2 |
+| 10 | Finalisation : mesures en production, tests sur téléphone | v1.3 |

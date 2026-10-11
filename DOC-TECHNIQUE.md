@@ -6,7 +6,7 @@
 | --- | --- |
 | Application | <https://pulsetrackisco.netlify.app> |
 | Dépôt | <https://github.com/touilmohammed/pulsetrack> |
-| Version décrite | `v1.0` (cache `pulsetrack-v6`) |
+| Version décrite | `v1.3` (cache `pulsetrack-v8`) |
 | Lancer en local | `npm install && npm start` → <http://localhost:3000> |
 | Tests | `npm test` (144 vérifications automatisées, voir § 11) |
 
@@ -95,7 +95,7 @@ tests/                    tests automatisés (npm test)
 
 ## 4. Stratégies de cache
 
-Fichier : [`sw.js`](sw.js). Un seul cache versionné, `CACHE_NAME = 'pulsetrack-v6'`.
+Fichier : [`sw.js`](sw.js). Un seul cache versionné, `CACHE_NAME = 'pulsetrack-v8'`.
 
 | Ressource | Stratégie | Stockage | Pourquoi |
 | --- | --- | --- | --- |
@@ -330,7 +330,7 @@ L'identifiant d'appareil n'est pas un secret d'authentification : quiconque le c
 
 ## 11. Mesures
 
-Mesures relevées le 11 octobre 2026 sur la production (`v0.6`, cache `pulsetrack-v6`), sauf mention contraire.
+Mesures relevées le 11 octobre 2026 sur la production (`v1.2`, cache `pulsetrack-v8`, avec conflits et rappels push), sauf mention contraire.
 
 ### 11.1 Lighthouse 12.8.2 (mobile, émulation par défaut, deux passages)
 
@@ -344,7 +344,7 @@ Mesures relevées le 11 octobre 2026 sur la production (`v0.6`, cache `pulsetrac
 | Indicateur | Passage 1 | Passage 2 | Cible |
 | --- | --- | --- | --- |
 | First Contentful Paint | 1,0 s | 0,9 s | — |
-| Largest Contentful Paint | 1,2 s | 1,0 s | < 2,5 s |
+| Largest Contentful Paint | 1,0 s | 1,1 s | < 2,5 s |
 | Total Blocking Time | 0 ms | 0 ms | (INP < 200 ms) |
 | Cumulative Layout Shift | 0,019 | 0,019 | < 0,1 |
 
@@ -352,7 +352,7 @@ Mesures relevées le 11 octobre 2026 sur la production (`v0.6`, cache `pulsetrac
 
 INP n'est pas mesurable en laboratoire ; le Total Blocking Time (0 ms) en est l'indicateur de substitution. Lighthouse 12 n'a plus de catégorie « PWA » : l'installabilité est vérifiée par DevTools → Application → Manifest et par l'API `Page.getInstallabilityErrors` (aucune erreur, `tests/sprint1.e2e.mjs`).
 
-**Poids** (gzip) : HTML 4,0 Ko · `app.js` 9,8 Ko · `data.js` 4,4 Ko · `styles.css` 2,5 Ko · `vendor/idb.js` 1,6 Ko · `sw.js` 2,0 Ko.
+**Poids** (gzip) : HTML 4,6 Ko · `app.js` 13,4 Ko · `data.js` 5,4 Ko · `styles.css` 2,8 Ko · `vendor/idb.js` 1,6 Ko · `sw.js` 2,6 Ko, soit environ 30 Ko de code au total.
 
 ### 11.2 Visibilité (production)
 
@@ -393,6 +393,7 @@ En mode sans interface, le navigateur n'a pas de service de push : le test de bo
 | T6 — Bannière de mise à jour (v5 → v6), saisie conservée | ✓ |
 | T7 / T8 — Séance créée en avion, envoyée au retour du réseau (Safari : repli `online`) | ✓ |
 | T15 — Position, photo, partage : accepter puis refuser | ✓ |
+| T16 — Rappel push (app installée, iOS 16.4+) : permission au clic, rappel de test reçu app en arrière-plan, clic → « Nouvelle séance » | ✓ |
 
 ## 12. Limites connues et écarts
 

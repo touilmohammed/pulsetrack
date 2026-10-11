@@ -9,6 +9,7 @@ const APP_SHELL = [
   '/index.html',
   '/offline.html',
   '/styles.css',
+  '/app.js',
   '/manifest.json',
   '/icons/icon-32.png',
   '/icons/icon-192.png',
@@ -34,3 +35,57 @@ self.addEventListener('activate', (event) => {
       .then(() => self.clients.claim())
   );
 });
+
+self.addEventListener('fetch', (event) => {
+  const { request } = event;
+  // Les écritures ne sont jamais mises en cache (outbox au sprint 4).
+  if (request.method !== 'GET') return;
+  const url = new URL(request.url);
+  // Autres origines (API, CDN) : le navigateur gère seul.
+  if (url.origin !== self.location.origin) return;
+
+  if (request.mode === 'navigate') {
+    event.respondWith(staleWhileRevalidate(event, url));
+    return;
+  }
+  event.respondWith(cacheFirst(request));
+});
+
+// HTML : réponse immédiate depuis le cache, mise à jour en arrière-plan.
+// Sans cache et sans réseau : page de secours offline.html.
+async function staleWhileRevalidate(event, url) {
+  const cache = await caches.open(CACHE_NAME);
+  // ignoreSearch : /?session=<id> ou /?source=pwa retrouvent le shell hors ligne.
+  const cached = await cache.match(event.request, { ignoreSearch: true });
+
+  const network = fetch(event.request).then((response) => {
+    // Une réponse redirigée servie à une navigation est refusée par Safari : on ne la garde pas.
+    if (response.ok && !response.redirected) {
+      // Clé sans query string, pour ne pas multiplier les copies du shell.
+      cache.put(url.pathname, response.clone());
+    }
+    return response;
+  });
+
+  if (cached) {
+    event.waitUntil(network.catch(() => {}));
+    return cached;
+  }
+  try {
+    return await network;
+  } catch {
+    return (await cache.match('/offline.html')) || Response.error();
+  }
+}
+
+// Statique (CSS, JS, icônes) : versionné par CACHE_NAME, le réseau ne sert qu'en cas d'absence.
+async function cacheFirst(request) {
+  const cached = await caches.match(request);
+  if (cached) return cached;
+  const response = await fetch(request);
+  if (response.ok) {
+    const cache = await caches.open(CACHE_NAME);
+    cache.put(request, response.clone());
+  }
+  return response;
+}

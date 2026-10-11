@@ -100,9 +100,12 @@
 
   // Écriture locale d'abord : la séance et son opération d'envoi sont écrites dans la même
   // transaction, donc aucune modification ne peut exister sans son entrée dans l'outbox.
-  async function saveSession(fields, id) {
+  // photo : undefined = inchangée, null = retirée, { blob, width, height } = nouvelle photo réduite.
+  // La photo reste sur l'appareil (store photos) : seule sa référence photoId vit dans la séance,
+  // et toPayload() ne l'envoie jamais au serveur.
+  async function saveSession(fields, id, { photo } = {}) {
     const database = await db();
-    const tx = database.transaction(['sessions', 'outbox'], 'readwrite');
+    const tx = database.transaction(['sessions', 'outbox', 'photos'], 'readwrite');
     const sessions = tx.objectStore('sessions');
     const now = new Date().toISOString();
     const existing = id ? await sessions.get(id) : null;
@@ -119,6 +122,22 @@
         updatedAt: now,
         syncState: 'pending',
       };
+    if (photo !== undefined) {
+      const photos = tx.objectStore('photos');
+      if (session.photoId) await photos.delete(session.photoId);
+      session.photoId = null;
+      if (photo) {
+        session.photoId = uuid();
+        await photos.put({
+          id: session.photoId,
+          sessionId: session.id,
+          blob: photo.blob,
+          width: photo.width,
+          height: photo.height,
+          createdAt: now,
+        });
+      }
+    }
     await sessions.put(session);
     // Création : POST. Modification : PUT (le serveur crée la séance s'il ne la connaît pas encore,
     // cas d'un exemple modifié).
@@ -142,6 +161,10 @@
       await tx.objectStore('outbox').add(outboxEntry('delete', session));
     }
     return tx.done;
+  }
+
+  async function getPhoto(id) {
+    return id ? (await db()).get('photos', id) : undefined;
   }
 
   async function countPending() {
@@ -315,6 +338,7 @@
     getSession,
     saveSession,
     deleteSession,
+    getPhoto,
     countPending,
     syncPendingData,
     pullSessions,

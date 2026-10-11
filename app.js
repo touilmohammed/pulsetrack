@@ -146,7 +146,7 @@ if (isIos && !isStandalone()) {
 // IndexedDB, outbox et synchronisation vivent dans data.js, partagé avec le Service Worker.
 const {
   db, getDeviceId, listSessions, getSession, saveSession, deleteSession,
-  countPending, syncPendingData, pullSessions,
+  getPhoto, countPending, syncPendingData, pullSessions,
 } = PulseData;
 
 const SESSION_TYPES = {
@@ -290,6 +290,8 @@ function renderItem(session) {
   time.textContent = dateFormat.format(new Date(session.date));
   const parts = [`${session.durationMin} min`];
   if (session.distanceKm != null) parts.push(`${kmFormat.format(session.distanceKm)} km`);
+  if (session.location) parts.push('avec position');
+  if (session.photoId) parts.push('avec photo');
   meta.append(time, ` · ${parts.join(' · ')}`);
 
   li.append(head, meta);
@@ -310,6 +312,12 @@ function renderItem(session) {
 
   const actions = document.createElement('div');
   actions.className = 'session-actions';
+  const detail = document.createElement('button');
+  detail.type = 'button';
+  detail.className = 'btn btn-secondary';
+  detail.dataset.action = 'detail';
+  detail.textContent = 'Détails';
+  detail.setAttribute('aria-label', `Voir la séance ${describe(session)}`);
   const edit = document.createElement('button');
   edit.type = 'button';
   edit.className = 'btn btn-secondary';
@@ -322,7 +330,7 @@ function renderItem(session) {
   del.dataset.action = 'delete';
   del.textContent = 'Supprimer';
   del.setAttribute('aria-label', `Supprimer la séance ${describe(session)}`);
-  actions.append(edit, del);
+  actions.append(detail, edit, del);
   li.append(actions);
 
   return li;
@@ -370,6 +378,7 @@ function resetForm() {
   cancelEditBtn.hidden = true;
   showError([]);
   updateNoteCount();
+  resetCapture();
 }
 
 function startEdit(session) {
@@ -385,6 +394,7 @@ function startEdit(session) {
   formStatus.textContent = '';
   showError([]);
   updateNoteCount();
+  loadCapture(session);
   form.scrollIntoView({ behavior: 'smooth', block: 'start' });
   form.elements.type.focus({ preventScroll: true });
 }
@@ -402,7 +412,7 @@ form.addEventListener('submit', async (event) => {
   }
   const editing = Boolean(sessionIdInput.value);
   try {
-    await saveSession(value, sessionIdInput.value || null);
+    await saveSession({ ...value, location: formLocation }, sessionIdInput.value || null, { photo: formPhoto });
   } catch (error) {
     console.error(error);
     showError(["Impossible d'enregistrer sur cet appareil (stockage plein ou indisponible)."]);
@@ -430,7 +440,9 @@ list.addEventListener('click', async (event) => {
   const session = await getSession(id);
   if (!session) return;
 
-  if (button.dataset.action === 'edit') {
+  if (button.dataset.action === 'detail') {
+    openDetail(session.id);
+  } else if (button.dataset.action === 'edit') {
     startEdit(session);
   } else if (button.dataset.action === 'delete') {
     if (!window.confirm(`Supprimer la séance ${describe(session)} ?`)) return;
@@ -448,6 +460,279 @@ list.addEventListener('click', async (event) => {
     requestSync();
   }
 });
+
+// --- Capacités : règles communes ---------------------------------------------
+// Aucune permission n'est demandée au chargement : chaque API n'est appelée qu'après un clic,
+// et chaque bouton n'est affiché que si le navigateur offre la fonctionnalité.
+// Les erreurs sont traduites en messages lisibles, jamais affichées brutes.
+const captureError = document.getElementById('capture-error');
+
+function showCaptureError(message) {
+  captureError.textContent = message;
+  captureError.hidden = !message;
+}
+
+// --- Capacité : géolocalisation -----------------------------------------------
+const geoBtn = document.getElementById('geo-btn');
+const geoStatus = document.getElementById('geo-status');
+let formLocation = null;
+
+const round5 = (n) => Math.round(n * 1e5) / 1e5;
+const GEO_ERRORS = {
+  1: 'Position refusée : la séance sera enregistrée sans lieu. Vous pouvez l\'autoriser dans les réglages du navigateur.',
+  2: 'Position indisponible pour le moment (GPS désactivé ou sans signal). La séance peut être enregistrée sans lieu.',
+  3: 'Position introuvable à temps (signal GPS faible). Réessayez à découvert.',
+};
+
+if ('geolocation' in navigator) geoBtn.hidden = false;
+
+function renderLocation() {
+  if (!formLocation) {
+    geoStatus.replaceChildren();
+    geoBtn.textContent = 'Ajouter ma position';
+    return;
+  }
+  const { lat, lng, accuracy } = formLocation;
+  const text = document.createElement('span');
+  text.textContent = `Position ajoutée : ${lat}, ${lng}${accuracy != null ? ` (± ${accuracy} m)` : ''}`;
+  const remove = document.createElement('button');
+  remove.type = 'button';
+  remove.className = 'btn btn-secondary btn-small';
+  remove.textContent = 'Retirer la position';
+  remove.addEventListener('click', () => {
+    formLocation = null;
+    renderLocation();
+  });
+  geoStatus.replaceChildren(text, remove);
+  geoBtn.textContent = 'Mettre à jour ma position';
+}
+
+geoBtn.addEventListener('click', () => {
+  showCaptureError('');
+  geoBtn.disabled = true;
+  geoBtn.textContent = 'Recherche de la position…';
+  navigator.geolocation.getCurrentPosition(
+    (position) => {
+      const { latitude, longitude, accuracy } = position.coords;
+      // 5 décimales ≈ 1 m : assez pour une séance, inutile d'en stocker davantage.
+      formLocation = { lat: round5(latitude), lng: round5(longitude), accuracy: Math.round(accuracy) };
+      geoBtn.disabled = false;
+      renderLocation();
+    },
+    (error) => {
+      geoBtn.disabled = false;
+      renderLocation();
+      showCaptureError(GEO_ERRORS[error.code] || 'Position impossible à obtenir. La séance peut être enregistrée sans lieu.');
+    },
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 },
+  );
+});
+
+// --- Capacité : caméra / photo ------------------------------------------------
+// <input type="file" capture> ouvre l'appareil photo (mobile) ; l'autre bouton ouvre la galerie ou
+// le sélecteur de fichiers. Si l'accès à la caméra est refusé, le système le signale lui-même et
+// « Choisir une image » reste disponible. La photo est réduite avant d'être stockée.
+const PHOTO_MAX = 1280;
+const PHOTO_QUALITY = 0.8;
+const cameraInput = document.getElementById('photo-camera');
+const pickInput = document.getElementById('photo-pick');
+const photoPreview = document.getElementById('photo-preview');
+const photoPreviewImg = document.getElementById('photo-preview-img');
+let formPhoto; // undefined = inchangée, null = retirée, { blob, width, height } = nouvelle
+let previewUrl = null;
+
+function showPreview(blob) {
+  if (previewUrl) URL.revokeObjectURL(previewUrl);
+  previewUrl = blob ? URL.createObjectURL(blob) : null;
+  photoPreviewImg.src = previewUrl || '';
+  photoPreview.hidden = !blob;
+}
+
+function loadImageElement(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Image illisible')); };
+    img.src = url;
+  });
+}
+
+// Réduction par canvas : 1280 px max, JPEG qualité 0,8 (une photo de téléphone passe de ~4 Mo à ~200 Ko).
+async function resizeImage(file) {
+  const source = 'createImageBitmap' in window ? await createImageBitmap(file) : await loadImageElement(file);
+  const width = source.width || source.naturalWidth;
+  const height = source.height || source.naturalHeight;
+  const scale = Math.min(1, PHOTO_MAX / Math.max(width, height));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(width * scale);
+  canvas.height = Math.round(height * scale);
+  canvas.getContext('2d').drawImage(source, 0, 0, canvas.width, canvas.height);
+  source.close?.();
+  const blob = await new Promise((resolve, reject) => {
+    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('Conversion impossible'))), 'image/jpeg', PHOTO_QUALITY);
+  });
+  return { blob, width: canvas.width, height: canvas.height };
+}
+
+async function handlePhotoInput(event) {
+  const file = event.target.files?.[0];
+  event.target.value = ''; // permet de choisir deux fois la même image
+  if (!file) return; // sélection annulée : rien à signaler
+  showCaptureError('');
+  if (!file.type.startsWith('image/')) {
+    showCaptureError('Ce fichier n\'est pas une image.');
+    return;
+  }
+  try {
+    formPhoto = await resizeImage(file);
+    showPreview(formPhoto.blob);
+  } catch (error) {
+    console.error(error);
+    showCaptureError('Impossible de lire cette image. Essayez une photo au format JPEG ou PNG.');
+  }
+}
+
+document.getElementById('photo-camera-btn').addEventListener('click', () => cameraInput.click());
+document.getElementById('photo-pick-btn').addEventListener('click', () => pickInput.click());
+cameraInput.addEventListener('change', handlePhotoInput);
+pickInput.addEventListener('change', handlePhotoInput);
+document.getElementById('photo-remove').addEventListener('click', () => {
+  formPhoto = null;
+  showPreview(null);
+});
+
+function resetCapture() {
+  formLocation = null;
+  formPhoto = undefined;
+  renderLocation();
+  showPreview(null);
+  showCaptureError('');
+}
+
+async function loadCapture(session) {
+  resetCapture();
+  formLocation = session.location ?? null;
+  renderLocation();
+  const photo = await getPhoto(session.photoId);
+  if (photo && sessionIdInput.value === session.id) showPreview(photo.blob);
+}
+
+// --- Détail d'une séance et capacité : partage ----------------------------------
+// URL privée /?session=<id> : le Service Worker la sert hors ligne (ignoreSearch), le canonical
+// pointe toujours vers / et robots.txt l'exclut.
+const detailDialog = document.getElementById('session-detail');
+const detailTitle = document.getElementById('detail-title');
+const detailMeta = document.getElementById('detail-meta');
+const detailNote = document.getElementById('detail-note');
+const detailPhoto = document.getElementById('detail-photo');
+const detailLocation = document.getElementById('detail-location');
+const detailShare = document.getElementById('detail-share');
+let detailPhotoUrl = null;
+let shareData = null;
+
+// Partage natif, ou copie dans le presse-papiers ; sans l'un ni l'autre, le bouton n'existe pas.
+const canShare = 'share' in navigator;
+const canCopy = Boolean(navigator.clipboard?.writeText);
+detailShare.hidden = !canShare && !canCopy;
+
+function sessionSummary(session) {
+  const parts = [`${session.durationMin} min`];
+  if (session.distanceKm != null) parts.push(`${kmFormat.format(session.distanceKm)} km`);
+  const lines = [`${SESSION_TYPES[session.type] || session.type} — ${dateFormat.format(new Date(session.date))}`, parts.join(' · ')];
+  if (session.note) lines.push(session.note);
+  return lines.join('\n');
+}
+
+async function openDetail(id, { push = true } = {}) {
+  const session = await getSession(id);
+  if (!session) {
+    showToast('Séance introuvable sur cet appareil.');
+    history.replaceState(null, '', '/');
+    return;
+  }
+  detailTitle.textContent = SESSION_TYPES[session.type] || session.type;
+  const parts = [dateFormat.format(new Date(session.date)), `${session.durationMin} min`];
+  if (session.distanceKm != null) parts.push(`${kmFormat.format(session.distanceKm)} km`);
+  detailMeta.textContent = parts.join(' · ');
+  detailNote.textContent = session.note || '';
+  detailNote.hidden = !session.note;
+
+  if (detailPhotoUrl) URL.revokeObjectURL(detailPhotoUrl);
+  const photo = await getPhoto(session.photoId);
+  detailPhotoUrl = photo ? URL.createObjectURL(photo.blob) : null;
+  detailPhoto.src = detailPhotoUrl || '';
+  detailPhoto.hidden = !photo;
+
+  detailLocation.replaceChildren();
+  detailLocation.hidden = !session.location;
+  if (session.location) {
+    const { lat, lng, accuracy } = session.location;
+    const link = document.createElement('a');
+    link.href = `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lng}#map=15/${lat}/${lng}`;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.textContent = 'voir sur la carte';
+    detailLocation.append(`Position : ${lat}, ${lng}${accuracy != null ? ` (± ${accuracy} m)` : ''} — `, link);
+  }
+
+  // Préparé à l'ouverture : navigator.share doit être appelé directement dans le clic,
+  // sans attente intermédiaire (sinon Safari refuse, faute de geste utilisateur).
+  const text = sessionSummary(session);
+  shareData = { title: `Séance ${SESSION_TYPES[session.type] || ''} — PulseTrack`.trim(), text, url: `${location.origin}/` };
+  if (photo && navigator.canShare) {
+    const file = new File([photo.blob], 'seance-pulsetrack.jpg', { type: photo.blob.type || 'image/jpeg' });
+    if (navigator.canShare({ files: [file] })) shareData.files = [file];
+  }
+
+  if (push && new URLSearchParams(location.search).get('session') !== id) {
+    history.pushState({ session: id }, '', `/?session=${encodeURIComponent(id)}`);
+  }
+  if (!detailDialog.open) detailDialog.showModal();
+}
+
+async function copyShareText() {
+  try {
+    await navigator.clipboard.writeText(`${shareData.text}\n${shareData.url}`);
+    showToast('Séance copiée dans le presse-papiers.');
+  } catch {
+    showToast('Copie impossible sur ce navigateur.');
+  }
+}
+
+detailShare.addEventListener('click', async () => {
+  if (!shareData) return;
+  if (canShare) {
+    try {
+      await navigator.share(shareData);
+      return;
+    } catch (error) {
+      if (error.name === 'AbortError') return; // partage annulé par l'utilisateur : rien à signaler
+      // Partage refusé (fichier non accepté, contexte non autorisé) : repli sur la copie.
+    }
+  }
+  if (canCopy) await copyShareText();
+});
+
+document.getElementById('detail-close').addEventListener('click', () => detailDialog.close());
+
+detailDialog.addEventListener('close', () => {
+  if (detailPhotoUrl) URL.revokeObjectURL(detailPhotoUrl);
+  detailPhotoUrl = null;
+  shareData = null;
+  if (new URLSearchParams(location.search).has('session')) {
+    // Ouvert depuis la liste : on revient à l'entrée précédente ; ouvert par lien direct : on nettoie l'URL.
+    if (history.state?.session) history.back();
+    else history.replaceState(null, '', '/');
+  }
+});
+
+function openDetailFromUrl() {
+  const id = new URLSearchParams(location.search).get('session');
+  if (id) openDetail(id, { push: false });
+  else if (detailDialog.open) detailDialog.close();
+}
+window.addEventListener('popstate', openDetailFromUrl);
 
 // --- Synchronisation --------------------------------------------------------
 // Chemin principal : Background Sync (Chromium) — le Service Worker rejoue l'outbox même si la page
@@ -535,6 +820,7 @@ resetForm();
     await getDeviceId();
     await importSeedsOnce();
     await refresh();
+    openDetailFromUrl();
     if (navigator.onLine) runSync();
   } catch (error) {
     // Sans IndexedDB (navigation privée stricte, stockage bloqué) : les exemples du HTML restent affichés.

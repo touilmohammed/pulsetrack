@@ -354,6 +354,98 @@ input[type="datetime-local"]::-webkit-date-and-time-value {
   padding-bottom: 32px;
 }
 
+/* Capacités : position et photo */
+.capture {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.capture legend {
+  padding: 0;
+  margin-bottom: 4px;
+  font-weight: 600;
+  font-size: 0.9375rem;
+  width: 100%;
+}
+.capture-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.capture-status:empty {
+  display: none;
+}
+.capture-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9375rem;
+  font-variant-numeric: tabular-nums;
+}
+.capture-error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 0.9375rem;
+}
+.photo-preview {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+.photo-preview img,
+.detail-photo {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  max-height: 320px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+/* Détail d'une séance */
+.detail {
+  width: min(640px, calc(100% - 32px));
+  max-height: calc(100% - 32px);
+  padding: var(--space);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+}
+.detail::backdrop {
+  background: rgb(0 0 0 / 0.55);
+}
+.detail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.detail-head h2 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+.detail .session-meta,
+.detail .session-note {
+  display: block;
+  margin: 8px 0;
+}
+.detail-photo {
+  margin: 12px 0;
+}
+.detail-location {
+  font-variant-numeric: tabular-nums;
+}
+.detail-location a {
+  color: var(--accent);
+}
+.detail-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
 /* Bandeaux (hors ligne, mise à jour) */
 .banner {
   position: sticky;

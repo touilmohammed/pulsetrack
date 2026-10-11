@@ -2,7 +2,7 @@
 
 PulseTrack enregistre vos séances de course, de vélo, de marche ou de musculation directement sur votre téléphone. Pas de 4G sur le sentier ou à la salle ? Vos séances restent disponibles et partent au serveur dès le retour du réseau.
 
-Gratuit, sans compte et sans publicité. Installez l'app sur votre écran d'accueil, notez type, durée, distance et ressenti, et retrouvez tout votre historique hors ligne. Pas de compte : vos séances sont rattachées à un identifiant anonyme propre à votre appareil.
+Gratuit, sans compte et sans publicité. Installez l'app sur votre écran d'accueil, notez type, durée, distance et ressenti, ajoutez votre position ou une photo, partagez une séance, et retrouvez tout votre historique hors ligne. Pas de compte : vos séances sont rattachées à un identifiant anonyme propre à votre appareil.
 
 - Application : <https://pulsetrackisco.netlify.app/>
 - Version HTML de cette page (canonique) : <https://pulsetrackisco.netlify.app/>
@@ -20,6 +20,7 @@ Gratuit, sans compte et sans publicité. Installez l'app sur votre écran d'accu
 - **Hors ligne** : l'interface et les séances restent disponibles en mode avion.
 - **Synchronisation** : les séances saisies hors ligne partent au serveur au retour du réseau, sans doublon.
 - **Installation** : depuis le navigateur, sur Android, iOS ou ordinateur, sans passer par un store.
+- **Position, photo, partage** : chaque séance peut porter votre position (sur demande) et une photo, qui reste sur l'appareil ; elle se partage en texte via le menu de partage du téléphone.
 - **Vie privée** : le journal de chaque utilisateur est privé ; seules ces séances d'exemple sont publiques.
 
 ---

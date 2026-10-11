@@ -40,7 +40,8 @@
     "featureList": [
       "Saisie de séances sans réseau",
       "Synchronisation automatique au retour du réseau",
-      "Installation sur l'écran d'accueil"
+      "Installation sur l'écran d'accueil",
+      "Position, photo et partage d'une séance"
     ],
     "offers": {
       "@type": "Offer",
@@ -94,7 +95,8 @@
       </p>
       <p class="features">
         Gratuit, sans compte et sans publicité. Installez l'app sur votre écran d'accueil,
-        notez type, durée, distance et ressenti, et retrouvez tout votre historique hors ligne. Pas de compte : vos séances sont rattachées à un identifiant
+        notez type, durée, distance et ressenti, ajoutez votre position ou une photo,
+        partagez une séance, et retrouvez tout votre historique hors ligne. Pas de compte : vos séances sont rattachées à un identifiant
         anonyme propre à votre appareil.
       </p>
       <p id="ios-install-hint" class="hint" hidden>
@@ -134,6 +136,23 @@
           <label for="note">Note <span class="field-hint" id="note-count">0 / 500</span></label>
           <textarea id="note" name="note" rows="3" maxlength="500" aria-describedby="note-count"></textarea>
         </div>
+        <!-- Capacités de l'appareil : aucune permission n'est demandée avant un clic sur ces boutons. -->
+        <fieldset class="field capture">
+          <legend>Lieu et photo <span class="field-hint">facultatif</span></legend>
+          <div class="capture-actions">
+            <button type="button" id="geo-btn" class="btn btn-secondary" hidden>Ajouter ma position</button>
+            <button type="button" id="photo-camera-btn" class="btn btn-secondary">Prendre une photo</button>
+            <button type="button" id="photo-pick-btn" class="btn btn-secondary">Choisir une image</button>
+          </div>
+          <input type="file" id="photo-camera" accept="image/*" capture="environment" hidden>
+          <input type="file" id="photo-pick" accept="image/*" hidden>
+          <div id="geo-status" class="capture-status" role="status"></div>
+          <div id="photo-preview" class="photo-preview" hidden>
+            <img id="photo-preview-img" alt="Aperçu de la photo jointe à la séance">
+            <button type="button" id="photo-remove" class="btn btn-secondary btn-small">Retirer la photo</button>
+          </div>
+          <p id="capture-error" class="capture-error" role="alert" hidden></p>
+        </fieldset>
         <input type="hidden" id="session-id" name="id">
         <p id="form-error" class="form-error" role="alert" hidden></p>
         <div class="form-actions">
@@ -184,6 +203,21 @@
       </ul>
       <p id="empty-state" class="empty-state" hidden>Aucune séance pour l'instant.</p>
     </section>
+
+    <!-- Détail d'une séance (/?session=<id>, privé : jamais dans le HTML initial ni le sitemap). -->
+    <dialog id="session-detail" class="detail" aria-labelledby="detail-title">
+      <div class="detail-head">
+        <h2 id="detail-title">Séance</h2>
+        <button type="button" id="detail-close" class="btn btn-secondary btn-small">Fermer</button>
+      </div>
+      <p id="detail-meta" class="session-meta"></p>
+      <p id="detail-note" class="session-note"></p>
+      <img id="detail-photo" class="detail-photo" alt="Photo de la séance" hidden>
+      <p id="detail-location" class="detail-location" hidden></p>
+      <div class="detail-actions">
+        <button type="button" id="detail-share" class="btn btn-primary">Partager</button>
+      </div>
+    </dialog>
   </main>
 
   <footer class="site-footer">

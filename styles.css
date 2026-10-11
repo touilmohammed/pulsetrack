@@ -161,6 +161,10 @@ input[type="datetime-local"]::-webkit-date-and-time-value {
   border: 0;
   border-radius: 8px;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
 }
 .btn-primary {
   background: var(--accent);

@@ -8,7 +8,7 @@
 | Dépôt | <https://github.com/touilmohammed/pulsetrack> |
 | Version décrite | `v1.0` (cache `pulsetrack-v6`) |
 | Lancer en local | `npm install && npm start` → <http://localhost:3000> |
-| Tests | `npm test` (126 vérifications automatisées, voir § 11) |
+| Tests | `npm test` (144 vérifications automatisées, voir § 11) |
 
 ---
 
@@ -22,7 +22,8 @@ PulseTrack est un journal d'entraînement (course, vélo, marche, musculation) q
 - **Conflits réconciliés** (bonus) : `If-Match` / 412, bannière « Garder la mienne / Prendre la leur », aucune donnée perdue.
 - **Mise à jour proposée, jamais imposée** : bannière « Nouvelle version disponible » pour ne pas perdre un formulaire en cours.
 - **Trois capacités de l'appareil** : géolocalisation (capacité principale), caméra / photo, partage — chacune après un geste, refus géré par un message.
-- **Mesures en production** : Lighthouse mobile 100 en Performance, Accessibilité, Bonnes pratiques et SEO ; JSON-LD sans erreur ; 126 tests automatisés au vert.
+- **Rappels d'entraînement par vrai push** (bonus) : Web Push + VAPID, jours et heure au choix, clic sur la notification → « Nouvelle séance ».
+- **Mesures en production** : Lighthouse mobile 100 en Performance, Accessibilité, Bonnes pratiques et SEO ; JSON-LD sans erreur ; 144 tests automatisés au vert.
 
 ## 2. Contexte
 
@@ -84,7 +85,10 @@ robots.txt  sitemap.xml  llms.txt  sessions.md  _headers
 server/api.mjs            API (validation, idempotence, If-Match, limitation de débit)
 server/server.mjs         serveur local : PWA + API sur la même origine
 server/store-file.mjs     stockage local (JSON)
+server/push.mjs           rappels push : abonnements, calcul des rappels dus, envoi Web Push
 netlify/functions/api.mjs l'API en production (Netlify Blobs)
+netlify/functions/reminders.mjs  Scheduled Function horaire (rappels)
+netlify/lib/              stockage Blobs et configuration VAPID partagés par les deux fonctions
 scripts/build.mjs         copie des fichiers publics dans dist/
 tests/                    tests automatisés (npm test)
 ```
@@ -194,6 +198,10 @@ Après un rejeu réussi, `pullSessions()` lit `GET /api/sessions`. Une séance d
 | `POST /api/sessions` | Créer (`Idempotency-Key`) | 201 ; 200 si la séance existe déjà ; rejeu : réponse mémorisée |
 | `PUT /api/sessions/:id` | Modifier (`If-Match: "<version>"`) | 200 ; 201 si la séance n'existait pas encore ; **412 + copie du serveur** si la version ne correspond pas |
 | `DELETE /api/sessions/:id` | Supprimer | 204, même si déjà supprimée |
+| `GET /api/push/key` | Clé publique VAPID | 200 ; 503 si les rappels ne sont pas configurés |
+| `POST /api/push/subscribe` | Enregistrer l'abonnement et les préférences (jours, heure, fuseau) | 201 ; 200 si déjà abonné (préférences mises à jour) ; 422 si service de push inconnu |
+| `DELETE /api/push/subscribe` | Retirer l'abonnement | 204 |
+| `POST /api/push/test` | Envoyer un rappel immédiat | 200 ; 404 sans abonnement |
 
 Toutes les écritures sont **validées côté serveur** avec les mêmes règles que le client (type, date, durée, distance, note ≤ 500, coordonnées) : 422 sinon. Corps limité à 16 Ko (413).
 
@@ -252,9 +260,24 @@ Règles communes, vérifiées par `tests/sprint6.e2e.mjs` :
 
 ## 8. Notifications
 
-**Non livrées en v1.0.** Les notifications push de rappel d'entraînement sont un bonus prévu au sprint 9 ; `FEATURES.push` vaut `false` et aucun handler `push` n'existe encore dans `sw.js`.
+**Rappels d'entraînement par vrai push (bonus)** : Web Push standard avec clés VAPID, sans compte Firebase. Une notification arrive même app fermée.
 
-Conception retenue pour le sprint 9 : vrai push via `web-push` et clés VAPID (clé privée dans les variables d'environnement Netlify, jamais côté client), bouton « Activer les rappels » avec une phrase d'explication **avant** `Notification.requestPermission()`, `notificationclick` qui ouvre l'app sur « Nouvelle séance », abonnement supprimé du serveur si l'utilisateur désactive les rappels. Limite connue : sur iOS, le push n'est disponible que pour une app installée sur l'écran d'accueil.
+| Aspect | Choix |
+| --- | --- |
+| **Type** | Push réel : le serveur chiffre le message (aes128gcm) et le signe avec la clé privée VAPID ; le service de push du navigateur (Google, Apple, Mozilla, Microsoft) le délivre au Service Worker |
+| **Moment de la demande** | Section « Réglages », bouton « Activer les rappels », **après** une phrase qui explique l'usage ; `Notification.requestPermission()` est le premier appel du clic (Safari exige un geste direct). Rien n'est demandé au chargement (testé) |
+| **Contenu** | Titre « PulseTrack », texte « C'est l'heure de ta séance ! (mercredi, 18 h) » avec le jour et l'heure choisis, icône 192 px, **tag unique** `pulsetrack-reminder` (un nouveau rappel remplace l'ancien au lieu de s'empiler) |
+| **Au clic** | `notificationclick` ramène l'app ouverte au premier plan sur le formulaire « Nouvelle séance » **sans effacer une saisie en cours** (message `OPEN_NEW_SESSION`), ou ouvre `/#session-form` |
+| **Planification** | L'utilisateur choisit les jours et l'heure (6 h à 22 h). Une **Netlify Scheduled Function** (`netlify/functions/reminders.mjs`, `@hourly`) envoie les rappels dus, calculés dans le **fuseau horaire de l'utilisateur** ; `lastSent` empêche deux envois le même jour |
+| **Stockage** | L'abonnement (`PushSubscription`) et les préférences sont envoyés au serveur (`push/<deviceId>/<id>`). « Désactiver » retire l'abonnement du serveur **puis** le résilie dans le navigateur. Un abonnement expiré (404 / 410 du service de push) est supprimé automatiquement |
+| **Si refus** | « Notifications refusées : les rappels ne pourront pas s'afficher. Vous pouvez les autoriser dans les réglages du navigateur ; le reste de l'app fonctionne normalement. » Les boutons de test et de désactivation restent masqués |
+| **Hors ligne** | Les boutons sont désactivés et un message explique que les rappels se règlent avec une connexion |
+| **iPhone** | Le push n'existe que pour une app **installée** sur l'écran d'accueil (iOS 16.4+) ; dans Safari, la section l'explique au lieu d'afficher une erreur |
+| **Test** | « Envoyer un rappel de test » envoie immédiatement une vraie notification (T16 sans attendre l'heure choisie) |
+
+**Envoi** ([`server/push.mjs`](server/push.mjs)). La librairie `web-push` ne sert qu'à **préparer** la requête (`generateRequestDetails` : chiffrement et en-tête `Authorization: vapid …`) ; l'envoi passe par `fetch`. Le même code tourne sur Netlify et en local, et il est testable avec un faux service de push (§ 11.3).
+
+**Clés VAPID.** La clé publique est servie par `GET /api/push/key` (le navigateur en a besoin pour s'abonner, ce n'est pas un secret). La clé privée n'existe que dans les variables d'environnement Netlify (`VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`) ; en local, des clés de développement sont générées dans `server/data/` (ignoré par Git). Sans clés, l'API répond 503 et l'app affiche « Les rappels ne sont pas encore disponibles sur le serveur ».
 
 ## 9. Visibilité SEO et agents IA
 
@@ -285,7 +308,8 @@ Résultats des quatre commandes de vérification au § 11.
 | **Aucun `innerHTML` pour du contenu saisi** : tout passe par `textContent` / `createElement` (une note `<img onerror=…>` reste du texte, testé) | `app.js` |
 | **CSP stricte** : `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'…` — possible parce qu'aucun script ni style externe ou inline n'est utilisé (`idb` est copiée localement ; le JSON-LD n'est pas exécuté) | `_headers` |
 | HSTS, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, `X-Frame-Options: DENY`, `Permissions-Policy` (géolocalisation et caméra pour l'origine seulement, micro, paiement et USB refusés) | `_headers` |
-| **Aucun secret côté client** ; l'API n'utilise aucune clé (la future clé VAPID privée ira dans les variables d'environnement Netlify) | — |
+| **Aucun secret côté client** : la clé privée VAPID n'existe que dans les variables d'environnement Netlify ; seule la clé publique est servie | `netlify/lib/netlify-store.mjs` |
+| **Anti-SSRF** : le serveur n'envoie de requête qu'aux services de push connus (`fcm.googleapis.com`, `web.push.apple.com`, `updates.push.services.mozilla.com`, `*.notify.windows.com`, en HTTPS) ; sans cette liste, un faux « abonnement » ferait appeler une URL arbitraire par la fonction | `server/push.mjs` |
 | **Validation serveur** de chaque champ, taille du corps limitée | `server/api.mjs` |
 | **Limitation de débit** : 120 écritures par minute et par appareil → 429 + `Retry-After` (le client réessaie automatiquement) | `server/api.mjs` |
 | **Même origine** pour la PWA et l'API : aucune configuration CORS à ouvrir | `netlify/functions/api.mjs` |
@@ -300,6 +324,7 @@ Résultats des quatre commandes de vérification au § 11.
 | Position | IndexedDB, dans la séance | Oui, uniquement si l'utilisateur l'a ajoutée |
 | Photo | IndexedDB (Blob) | **Non** : reste sur l'appareil |
 | Identifiant d'appareil (UUID aléatoire) | IndexedDB (`meta`) | Oui, en-tête `X-Device-Id` |
+| Abonnement push et préférences de rappel | Serveur ; préférences aussi dans IndexedDB (`meta`) | Oui, seulement si l'utilisateur active les rappels ; supprimé s'il les désactive |
 
 L'identifiant d'appareil n'est pas un secret d'authentification : quiconque le connaîtrait pourrait lire les séances de l'appareil. C'est acceptable pour un TP sans comptes (non-objectif explicite) et documenté au § 12.
 
@@ -352,7 +377,11 @@ INP n'est pas mesurable en laboratoire ; le Total Blocking Time (0 ms) en est l'
 | Synchronisation | 23 | Outbox hors ligne, rejeu sans doublon, serveur coupé alors que `navigator.onLine` est vrai, 4xx définitive, lecture réseau d'abord, **Background Sync seul** (page hors ligne, événement `sync` déclenché dans le SW) |
 | Capacités | 24 | Aucune permission au chargement, refus et acceptation de la position, réduction photo 3000 → 1280 px, photo jamais envoyée, partage natif / annulé / repli presse-papiers, détail hors ligne |
 | Conflits (T9) | 13 | Deux onglets hors ligne → un seul 412, rien d'écrasé, bannière comparative, « Garder la mienne » (v3), « Prendre la leur », pas de faux conflit dans un même onglet |
-| **Total** | **126** | **126 réussies, 0 en échec** |
+| Rappels push, serveur | 17 | Liste blanche anti-SSRF, 503 sans clés, abonnement et réabonnement, **vraie requête Web Push** reçue par un faux service local puis **déchiffrée** (VAPID, aes128gcm, TTL), rappel dû au bon jour et à la bonne heure dans le fuseau de l'utilisateur, pas de doublon, abonnement expiré (410) supprimé, désabonnement |
+| Rappels push, bout en bout (T16) | 14 | Aucune permission au chargement, refus géré, abonnement avec la clé VAPID, rappel de test envoyé par le serveur puis remis au Service Worker (`ServiceWorker.deliverPushMessage`), notification affichée (titre, texte, icône, tag), clic → « Nouvelle séance » sans perte de saisie, hors ligne, désactivation |
+| **Total** | **144** | **144 réussies, 0 en échec** |
+
+En mode sans interface, le navigateur n'a pas de service de push : le test de bout en bout simule l'abonnement du navigateur (endpoint local, vraies clés de chiffrement). Tout le reste de la chaîne est réel : envoi par le serveur, chiffrement, déchiffrement, événements `push` et `notificationclick` du Service Worker.
 
 ### 11.4 Tests manuels sur téléphone (iPhone, Safari)
 
@@ -379,7 +408,9 @@ INP n'est pas mesurable en laboratoire ; le Total Blocking Time (0 ms) en est l'
 | Limitation de débit **par instance** de la fonction | Pas une protection contre une attaque distribuée | Garde-fou contre une boucle d'envoi ou un abus simple |
 | `GET /api/sessions` lit chaque séance séparément dans Netlify Blobs | Lent avec des milliers de séances | Suffisant à l'échelle du TP |
 | La suppression ne porte pas `If-Match` | Supprimer une séance modifiée dans un autre onglet la supprime | Choix assumé : la suppression gagne (§ 6.7) |
-| Push non livré en v1.0 ; sur iOS, push réservé aux apps installées | — | Bonus sprint 9 (§ 8) |
+| Push sur iOS réservé aux apps installées sur l'écran d'accueil (iOS 16.4+) | Pas de rappel dans Safari | La section Réglages l'explique et indique comment installer |
+| Rappels à l'heure pile seulement, envoyés par une fonction horaire | Précision de l'ordre de la minute à l'heure près | Suffisant pour un rappel de séance ; la Scheduled Function ne tourne qu'en production |
+| `pushsubscriptionchange` non géré | Si le navigateur renouvelle l'abonnement, les rappels s'arrêtent | L'ancien abonnement expire (410) et est supprimé ; réactiver les rappels suffit |
 | Crédits Netlify (gratuit : 300 / mois, 15 par déploiement de production) | Nombre de déploiements limité | Tests sur les aperçus de branche (gratuits) ; build ignoré si seuls la doc ou le README changent (`netlify.toml`) |
 
 ### 12.2 Écarts au PRD
@@ -395,4 +426,4 @@ INP n'est pas mesurable en laboratoire ; le Total Blocking Time (0 ms) en est l'
 
 ### 12.3 Suite possible
 
-Notifications push (sprint 9), puis : comptes et authentification, synchronisation des photos, export GPX, graphiques de progression, synchronisation périodique en arrière-plan.
+Comptes et authentification, synchronisation des photos, export GPX, graphiques de progression, synchronisation périodique en arrière-plan.

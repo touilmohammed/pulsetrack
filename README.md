@@ -16,6 +16,7 @@ TP M2 Informatique — Università di Corsica.
 - **Conflits** détectés (`If-Match` / 412) et résolus par l'utilisateur : « Garder la mienne » ou « Prendre la leur »
 - **Mise à jour** proposée par une bannière, jamais imposée pendant une saisie
 - **Position, photo et partage** d'une séance, permissions demandées après un geste
+- **Rappels d'entraînement** par notifications push (Web Push + VAPID), jours et heure au choix
 - Vitrine lisible par les robots et les agents IA (JSON-LD, `robots.txt`, `sitemap.xml`, `llms.txt`, jumelle Markdown)
 
 ## Lancer en local
@@ -27,7 +28,9 @@ npm install
 npm start
 ```
 
-L'app et l'API sont servies sur <http://localhost:3000>, sur la même origine comme en production, avec les en-têtes de `_headers`. Les données de l'API sont écrites dans `server/data/db.json` (ignoré par Git). Variables utiles : `PORT`, `DATA_FILE`.
+L'app et l'API sont servies sur <http://localhost:3000>, sur la même origine comme en production, avec les en-têtes de `_headers`. Les données de l'API sont écrites dans `server/data/db.json` (ignoré par Git). Variables utiles : `PORT`, `DATA_FILE`. Des clés VAPID de développement sont générées au premier lancement dans `server/data/vapid.json`.
+
+En production, les rappels push demandent trois variables d'environnement Netlify : `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` (générées par `npx web-push generate-vapid-keys`) et `VAPID_SUBJECT` (`https://pulsetrackisco.netlify.app`).
 
 ## Tests
 
@@ -36,7 +39,7 @@ npm test                                   # tests unitaires de l'API + tests de
 npm test -- https://pulsetrackisco.netlify.app   # tests applicables contre un déploiement
 ```
 
-Les tests de bout en bout pilotent un vrai navigateur sans interface (`puppeteer-core`) : Edge par défaut sous Windows, sinon indiquer `BROWSER_PATH=/chemin/vers/chrome`. Détail des 126 vérifications : [DOC-TECHNIQUE.md § 11](DOC-TECHNIQUE.md#11-mesures).
+Les tests de bout en bout pilotent un vrai navigateur sans interface (`puppeteer-core`) : Edge par défaut sous Windows, sinon indiquer `BROWSER_PATH=/chemin/vers/chrome`. Détail des 144 vérifications : [DOC-TECHNIQUE.md § 11](DOC-TECHNIQUE.md#11-mesures).
 
 ## Architecture
 
@@ -47,6 +50,7 @@ Les tests de bout en bout pilotent un vrai navigateur sans interface (`puppeteer
 | `sw.js` | Service Worker écrit à la main : App Shell, stratégies de cache, mise à jour, Background Sync |
 | `server/api.mjs` | API `/api/sessions` (validation, idempotence par `Idempotency-Key`, `If-Match` / 412, limitation de débit) |
 | `netlify/functions/api.mjs` | L'API en production (Netlify Function + Netlify Blobs) |
+| `netlify/functions/reminders.mjs` | Rappels push : Scheduled Function horaire |
 | `server/server.mjs` | Serveur de développement : PWA + API, stockage dans un fichier JSON |
 | `tests/` | Tests automatisés (`npm test`) |
 
@@ -69,3 +73,4 @@ Avant chaque déploiement qui touche un fichier du shell : incrémenter `CACHE_N
 | 6 | Capacités : position, photo, partage | v0.6 |
 | 7 | Document technique, tests automatisés | v1.0 |
 | 8 | Bonus : conflits `If-Match`, bannière de résolution | v1.1 |
+| 9 | Bonus : rappels par notifications push | v1.1 |

@@ -21,7 +21,7 @@ PulseTrack est un journal d'entraînement (course, vélo, marche, musculation) q
 - **Synchronisation fiable** : écriture locale et opération d'envoi dans la même transaction, identifiant d'opération (`Idempotency-Key`) pour qu'un rejeu ne soit jamais appliqué deux fois, `If-Match` / 412 côté serveur.
 - **Mise à jour proposée, jamais imposée** : bannière « Nouvelle version disponible » pour ne pas perdre un formulaire en cours.
 - **Trois capacités de l'appareil** : géolocalisation (capacité principale), caméra / photo, partage — chacune après un geste, refus géré par un message.
-- **Mesures en production** : Lighthouse mobile Performance 100, Accessibilité 100, SEO 100 ; JSON-LD sans erreur.
+- **Mesures en production** : Lighthouse mobile 100 en Performance, Accessibilité, Bonnes pratiques et SEO ; JSON-LD sans erreur ; 112 tests automatisés au vert.
 
 ## 2. Contexte
 
@@ -287,19 +287,19 @@ Mesures relevées le 11 octobre 2026 sur la production (`v0.6`, cache `pulsetrac
 | --- | --- |
 | Performance | **100** / 100 |
 | Accessibilité | **100** / 100 |
-| SEO | **100** |
-| Bonnes pratiques | **93** — voir ci-dessous |
+| Bonnes pratiques | **100** / 100 |
+| SEO | **100** / 100 |
 
 | Indicateur | Passage 1 | Passage 2 | Cible |
 | --- | --- | --- | --- |
-| First Contentful Paint | 1,2 s | 1,0 s | — |
-| Largest Contentful Paint | 1,3 s | 1,1 s | < 2,5 s |
-| Total Blocking Time | 10 ms | 10 ms | (INP < 200 ms) |
+| First Contentful Paint | 1,0 s | 0,9 s | — |
+| Largest Contentful Paint | 1,2 s | 1,0 s | < 2,5 s |
+| Total Blocking Time | 0 ms | 0 ms | (INP < 200 ms) |
 | Cumulative Layout Shift | 0,019 | 0,019 | < 0,1 |
 
-**Bonnes pratiques à 93 en production, 100 sur les aperçus et en local.** Netlify injecte en production un script de badge « Powered by Netlify » (`/.netlify/scripts/hud`) qui crée une iframe contenant du code inline ; notre CSP le bloque, ce qui produit des erreurs dans la console. Ce n'est pas du code de l'app ; le badge se désactive dans les réglages du projet Netlify.
+**Incident rencontré.** Une première mesure donnait Bonnes pratiques à 93 en production (100 sur les aperçus et en local) : Netlify injecte sur les projets gratuits un badge « Powered by Netlify » (`/.netlify/scripts/hud`) qui crée une iframe avec du code inline ; notre CSP le bloquait, d'où des erreurs dans la console. Le badge a été désactivé dans les réglages du projet (sans redéploiement) ; les mesures ci-dessus sont postérieures.
 
-INP n'est pas mesurable en laboratoire ; le Total Blocking Time (10 ms) en est l'indicateur de substitution. Lighthouse 12 n'a plus de catégorie « PWA » : l'installabilité est vérifiée par DevTools → Application → Manifest et par l'API `Page.getInstallabilityErrors` (aucune erreur, `tests/sprint1.e2e.mjs`).
+INP n'est pas mesurable en laboratoire ; le Total Blocking Time (0 ms) en est l'indicateur de substitution. Lighthouse 12 n'a plus de catégorie « PWA » : l'installabilité est vérifiée par DevTools → Application → Manifest et par l'API `Page.getInstallabilityErrors` (aucune erreur, `tests/sprint1.e2e.mjs`).
 
 **Poids** (gzip) : HTML 4,0 Ko · `app.js` 9,8 Ko · `data.js` 4,4 Ko · `styles.css` 2,5 Ko · `vendor/idb.js` 1,6 Ko · `sw.js` 2,0 Ko.
 

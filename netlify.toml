@@ -1,4 +1,9 @@
-# Site statique : pas de build, publication de la racine du dépôt.
+# Le « build » copie seulement les fichiers publics dans dist/ (voir scripts/build.mjs) :
+# node_modules/, server/ et netlify/ ne sont jamais publiés comme fichiers statiques.
 [build]
-  publish = "."
-  command = ""
+  command = "node scripts/build.mjs"
+  publish = "dist"
+
+# API de synchronisation : netlify/functions/api.mjs, servie sur /api/* (même origine que la PWA).
+[functions]
+  directory = "netlify/functions"

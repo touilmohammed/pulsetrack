@@ -73,8 +73,29 @@ main,
   padding: 0 var(--space);
 }
 
+/* .btn impose display: inline-flex, qui l'emporterait sur l'attribut hidden */
+[hidden] {
+  display: none !important;
+}
+
 .site-header {
   padding-top: var(--space);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.btn-small {
+  padding: 8px 14px;
+}
+
+.hint {
+  margin: -8px 0 24px;
+  padding: 12px;
+  border-left: 4px solid var(--accent);
+  background: var(--surface);
+  border-radius: 0 8px 8px 0;
 }
 
 .brand {

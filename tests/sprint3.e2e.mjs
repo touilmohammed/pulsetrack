@@ -2,6 +2,7 @@
 // Usage : node test-sprint3.mjs <url> <chemin du sw.js servi (copie modifiable)>
 import puppeteer from 'puppeteer-core';
 import { readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 
 const BASE = process.argv[2];
 const SW_PATH = process.argv[3];
@@ -13,6 +14,9 @@ const results = [];
 const check = (name, ok, detail = '') => results.push(`${ok ? 'OK  ' : 'FAIL'} ${name}${detail ? ' — ' + detail : ''}`);
 const settle = (ms = 400) => new Promise((r) => setTimeout(r, ms));
 const original = readFileSync(SW_PATH, 'utf8');
+// Le redéploiement simulé change aussi la page : elle ne doit jamais être servie avec les fichiers de l'ancienne version.
+const HTML_PATH = join(dirname(SW_PATH), 'index.html');
+const originalHtml = readFileSync(HTML_PATH, 'utf8');
 
 try {
   const page = await browser.newPage();
@@ -33,6 +37,7 @@ try {
 
   // Saisie en cours, puis « redéploiement »
   await page.type('#note', 'Saisie en cours');
+  writeFileSync(HTML_PATH, originalHtml.replace('</body>', '<div id="deploy-v99"></div></body>'));
   writeFileSync(SW_PATH, original.replace(/const CACHE_NAME = 'pulsetrack-v\d+';/, "const CACHE_NAME = 'pulsetrack-v99';"));
   await page.evaluate(async () => (await navigator.serviceWorker.getRegistration()).update());
   await page.waitForSelector('#update-banner:not([hidden])', { timeout: 15000 });
@@ -46,6 +51,10 @@ try {
   await page.reload({ waitUntil: 'load' });
   await page.waitForSelector('#update-banner:not([hidden])', { timeout: 10000 });
   check('Rechargement : la bannière revient (SW en attente)', true);
+  await page.reload({ waitUntil: 'load' });
+  await settle(800);
+  const before = await page.evaluate(() => ({ marker: !!document.getElementById('deploy-v99'), version: document.getElementById('app-version').textContent }));
+  check('Avant mise à jour : ancienne page avec ses propres fichiers (pas de mélange de versions)', !before.marker && before.version === v1, JSON.stringify(before));
 
   // Mettre à jour : SKIP_WAITING → controllerchange → rechargement
   await Promise.all([page.waitForNavigation({ waitUntil: 'load' }), page.click('#update-apply')]);
@@ -53,6 +62,7 @@ try {
   const after = await page.evaluate(async () => ({ keys: await caches.keys(), version: document.getElementById('app-version').textContent }));
   check('Après mise à jour : version v99', after.version === 'Version : pulsetrack-v99', after.version);
   check('Après mise à jour : anciens caches supprimés', after.keys.length === 1 && after.keys[0] === 'pulsetrack-v99', after.keys.join(','));
+  check('Après mise à jour : nouvelle page servie', await page.evaluate(() => !!document.getElementById('deploy-v99')));
   check('Après mise à jour : bannière masquée', await page.$eval('#update-banner', (el) => el.hidden));
 
   // Bandeau hors ligne et toasts
@@ -70,6 +80,7 @@ try {
   check('Exécution du test', false, e.stack);
 } finally {
   writeFileSync(SW_PATH, original);
+  writeFileSync(HTML_PATH, originalHtml);
   await browser.close();
   console.log(results.join('\n'));
 }

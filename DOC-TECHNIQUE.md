@@ -6,9 +6,9 @@
 | --- | --- |
 | Application | <https://pulsetrackisco.netlify.app> |
 | Dépôt | <https://github.com/touilmohammed/pulsetrack> |
-| Version décrite | `v1.3` (cache `pulsetrack-v8`) |
+| Version décrite | `v1.3` (cache `pulsetrack-v9`) |
 | Lancer en local | `npm install && npm start` → <http://localhost:3000> |
-| Tests | `npm test` (144 vérifications automatisées, voir § 11) |
+| Tests | `npm test` (159 vérifications automatisées, voir § 11) |
 
 ---
 
@@ -23,7 +23,7 @@ PulseTrack est un journal d'entraînement (course, vélo, marche, musculation) q
 - **Mise à jour proposée, jamais imposée** : bannière « Nouvelle version disponible » pour ne pas perdre un formulaire en cours.
 - **Trois capacités de l'appareil** : géolocalisation (capacité principale), caméra / photo, partage — chacune après un geste, refus géré par un message.
 - **Rappels d'entraînement par vrai push** (bonus) : Web Push + VAPID, jours et heure au choix, clic sur la notification → « Nouvelle séance ».
-- **Mesures en production** : Lighthouse mobile 100 en Performance, Accessibilité, Bonnes pratiques et SEO ; JSON-LD sans erreur ; 144 tests automatisés au vert.
+- **Mesures en production** : Lighthouse mobile 100 en Performance, Accessibilité, Bonnes pratiques et SEO ; JSON-LD sans erreur ; 159 tests automatisés au vert.
 
 ## 2. Contexte
 
@@ -95,11 +95,11 @@ tests/                    tests automatisés (npm test)
 
 ## 4. Stratégies de cache
 
-Fichier : [`sw.js`](sw.js). Un seul cache versionné, `CACHE_NAME = 'pulsetrack-v8'`.
+Fichier : [`sw.js`](sw.js). Un seul cache versionné, `CACHE_NAME = 'pulsetrack-v9'`.
 
 | Ressource | Stratégie | Stockage | Pourquoi |
 | --- | --- | --- | --- |
-| Navigation (HTML) | **Stale While Revalidate** + `ignoreSearch` | Cache API | Affichage instantané depuis le cache, nouvelle version récupérée en arrière-plan |
+| Navigation (HTML) | **Stale While Revalidate** au niveau du shell + `ignoreSearch` | Cache API | Affichage instantané depuis le cache ; la revalidation vérifie `sw.js`, et la nouvelle version pré-cache page et fichiers ensemble (§ 5) |
 | CSS, JS, icônes, manifest | **Cache First** | Cache API | Fichiers versionnés par `CACHE_NAME` : le réseau ne sert qu'en cas d'absence |
 | Navigation échouée (ni cache ni réseau) | Repli **`offline.html`** | Cache API | Page de secours au lieu de l'erreur du navigateur |
 | Lecture `/api/*` | **Réseau uniquement** dans le SW, **repli IndexedDB** dans la page | IndexedDB | Données fraîches si possible ; sinon la page affiche déjà la base locale |
@@ -113,8 +113,8 @@ Points de détail, tous visibles dans `sw.js` :
 - **`sw.js` n'est jamais pré-caché** : le navigateur doit toujours pouvoir comparer le fichier du serveur pour détecter une mise à jour. `_headers` lui impose `Cache-Control: no-cache`.
 - **`cache.addAll` est atomique** : si un seul fichier manque, l'installation échoue et l'ancienne version reste en place.
 - **Pré-cache en `cache: 'reload'`** : la nouvelle version télécharge des fichiers frais au lieu de recopier ceux du cache HTTP du navigateur.
-- **`ignoreSearch: true`** : `/?session=<id>` (détail d'une séance) retrouve le shell hors ligne ; la copie est rangée sous la clé `url.pathname` pour ne pas multiplier les copies du HTML.
-- **Réponses redirigées non mises en cache** : Safari refuse de les servir à une navigation.
+- **`ignoreSearch: true`** : `/?session=<id>` (détail d'une séance) retrouve le shell hors ligne.
+- **La page n'est jamais rangée à part dans le cache** : seul le pré-cache d'une version écrit le HTML, avec les fichiers de cette même version. Une page hors du shell passe par le réseau sans être mise en cache (incident au § 5).
 - **`/api/*` ignoré par le `fetch`** : une réponse d'API en cache serait périmée et masquerait l'état réel du serveur ; la lecture « réseau d'abord, repli IndexedDB » est faite par `pullSessions()` dans `data.js`, qui sait fusionner sans écraser une modification en attente.
 
 **Indicateur hors ligne.** `navigator.onLine` peut mentir (Wi-Fi sans Internet) : il ne sert qu'à l'affichage (bandeau « Mode hors ligne », toasts). La décision « réessayer plus tard » repose sur l'échec réel du `fetch` dans `syncPendingData()`.
@@ -125,8 +125,8 @@ Points de détail, tous visibles dans `sw.js` :
 
 Mécanisme ([`sw.js`](sw.js), section « Service Worker et mises à jour » de [`app.js`](app.js)) :
 
-1. À chaque déploiement qui touche le shell, `CACHE_NAME` est incrémenté (v1 → v6 sur ce projet).
-2. Le navigateur détecte un `sw.js` différent ; le nouveau Service Worker s'installe et **attend** : pas de `skipWaiting()` automatique.
+1. À chaque déploiement qui touche le shell, `CACHE_NAME` est incrémenté (v1 → v9 sur ce projet).
+2. Le navigateur détecte un `sw.js` différent (vérification à chaque navigation servie par le Service Worker, qui appelle `registration.update()`) ; le nouveau Service Worker pré-cache tout le shell et **attend** : pas de `skipWaiting()` automatique.
 3. La page écoute `updatefound` puis `statechange` ; à l'état `installed` **avec un contrôleur existant** (donc une mise à jour, pas la première installation), elle affiche la bannière.
 4. « Mettre à jour » envoie `postMessage({ type: 'SKIP_WAITING' })` ; le Service Worker appelle `skipWaiting()`, puis `activate` supprime les anciens caches `pulsetrack-*` et appelle `clients.claim()`.
 5. La page recharge sur `controllerchange` — **seulement si l'utilisateur l'a demandé** (`reloadAccepted`). Sans cette garde, la toute première installation (`clients.claim()` déclenche aussi `controllerchange`) rechargerait la page sans raison.
@@ -134,7 +134,11 @@ Mécanisme ([`sw.js`](sw.js), section « Service Worker et mises à jour » de [
 
 Une app installée reste ouverte longtemps sans naviguer : la page appelle `registration.update()` à chaque retour au premier plan (`visibilitychange`). La version active est affichée en pied de page (message `GET_VERSION` au Service Worker).
 
-**Validation** : redéploiement v5 → v6 sur iPhone avec l'app ouverte et une note en cours de saisie : bannière affichée, note conservée, rechargement sur « Mettre à jour », pied de page en v6. Le test automatisé `tests/sprint3.e2e.mjs` rejoue ce scénario (14 vérifications).
+Si l'app est **entièrement fermée** pendant la mise à jour (fréquent sur iOS, qui ferme les apps en arrière-plan), la version en attente n'a plus de page à protéger : elle s'active au lancement suivant, sans bannière. C'est le comportement normal d'un Service Worker.
+
+**Validation** : redéploiement v5 → v6 sur iPhone avec l'app ouverte et une note en cours de saisie : bannière affichée, note conservée, rechargement sur « Mettre à jour », pied de page en v6. Le test automatisé `tests/sprint3.e2e.mjs` rejoue ce scénario (16 vérifications), page comprise.
+
+**Incident (v1.2, corrigé en v1.3).** La revalidation rangeait le HTML reçu du réseau dans le cache de la version **active**. Après le déploiement de la v1.2, l'ancien Service Worker d'un onglet Safari a donc servi la nouvelle page avec ses anciens `app.js` et `styles.css` : section Réglages sans mise en forme, journal sans boutons, pas de bannière. Le test de mise à jour ne changeait que `sw.js` et ne pouvait pas le voir. Correctif : la page n'est plus écrite que par le pré-cache de sa version, et la revalidation déclenche `registration.update()`. Le test change désormais aussi `index.html` et vérifie qu'aucun mélange de versions n'est servi ; il échouait avant le correctif. La v1.3 ne modifie pas `index.html` : l'ancien Service Worker, qui range encore la page reçue, recopie donc une page identique, et le passage à la v1.3 se fait sans mélange.
 
 ## 6. Données et synchronisation
 
@@ -373,13 +377,13 @@ INP n'est pas mesurable en laboratoire ; le Total Blocking Time (0 ms) en est l'
 | API (unitaires) | 21 | Validation, création, rejeu idempotent, `If-Match` et `X-If-Match` / 412, upsert, suppression, isolation par appareil, limitation de débit |
 | Installable et hors ligne | 10 | SW actif, cache versionné sans `sw.js`, manifest et installabilité sans erreur, shell / `?session=` / `offline.html` hors ligne |
 | Séances locales | 21 | CRUD, validation, import unique des exemples, XSS, filtre, hors ligne, non-réimport |
-| Mise à jour | 14 | Pas de rechargement à la 1re installation, bannière sans perte de saisie, « Plus tard », SKIP_WAITING, anciens caches supprimés, bandeau hors ligne |
+| Mise à jour | 16 | Pas de rechargement à la 1re installation, bannière sans perte de saisie, **jamais de nouvelle page servie avec les anciens fichiers**, « Plus tard », SKIP_WAITING, anciens caches supprimés, bandeau hors ligne |
 | Synchronisation | 23 | Outbox hors ligne, rejeu sans doublon, serveur coupé alors que `navigator.onLine` est vrai, 4xx définitive, lecture réseau d'abord, **Background Sync seul** (page hors ligne, événement `sync` déclenché dans le SW) |
 | Capacités | 24 | Aucune permission au chargement, refus et acceptation de la position, réduction photo 3000 → 1280 px, photo jamais envoyée, partage natif / annulé / repli presse-papiers, détail hors ligne |
 | Conflits (T9) | 13 | Deux onglets hors ligne → un seul 412, rien d'écrasé, bannière comparative, « Garder la mienne » (v3), « Prendre la leur », pas de faux conflit dans un même onglet |
 | Rappels push, serveur | 17 | Liste blanche anti-SSRF, 503 sans clés, abonnement et réabonnement, **vraie requête Web Push** reçue par un faux service local puis **déchiffrée** (VAPID, aes128gcm, TTL), rappel dû au bon jour et à la bonne heure dans le fuseau de l'utilisateur, pas de doublon, abonnement expiré (410) supprimé, désabonnement |
 | Rappels push, bout en bout (T16) | 14 | Aucune permission au chargement, refus géré, abonnement avec la clé VAPID, rappel de test envoyé par le serveur puis remis au Service Worker (`ServiceWorker.deliverPushMessage`), notification affichée (titre, texte, icône, tag), clic → « Nouvelle séance » sans perte de saisie, hors ligne, désactivation |
-| **Total** | **144** | **144 réussies, 0 en échec** |
+| **Total** | **159** | **159 réussies, 0 en échec** |
 
 En mode sans interface, le navigateur n'a pas de service de push : le test de bout en bout simule l'abonnement du navigateur (endpoint local, vraies clés de chiffrement). Tout le reste de la chaîne est réel : envoi par le serveur, chiffrement, déchiffrement, événements `push` et `notificationclick` du Service Worker.
 

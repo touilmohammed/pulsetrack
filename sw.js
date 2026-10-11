@@ -1,6 +1,6 @@
 // Service Worker PulseTrack — écrit à la main (pas de Workbox).
 // À incrémenter à chaque déploiement qui modifie un fichier du shell.
-const CACHE_NAME = 'pulsetrack-v8';
+const CACHE_NAME = 'pulsetrack-v9';
 
 // Base IndexedDB et rejeu de l'outbox, partagés avec la page (Background Sync).
 importScripts('/vendor/idb.js', '/data.js');
@@ -67,34 +67,30 @@ self.addEventListener('fetch', (event) => {
   if (url.pathname.startsWith('/api/')) return;
 
   if (request.mode === 'navigate') {
-    event.respondWith(staleWhileRevalidate(event, url));
+    event.respondWith(staleWhileRevalidate(event));
     return;
   }
   event.respondWith(cacheFirst(request));
 });
 
-// HTML : réponse immédiate depuis le cache, mise à jour en arrière-plan.
+// HTML : réponse immédiate depuis le cache, revalidation en arrière-plan.
+// La revalidation porte sur tout le shell et non sur la seule page : on demande au navigateur de
+// vérifier sw.js. Ranger la nouvelle page dans le cache de l'ancienne version la servirait avec les
+// anciens app.js et styles.css (incident de la v1.2) ; la nouvelle version pré-cache au contraire
+// page et fichiers ensemble, puis la bannière propose de l'activer.
 // Sans cache et sans réseau : page de secours offline.html.
-async function staleWhileRevalidate(event, url) {
+async function staleWhileRevalidate(event) {
   const cache = await caches.open(CACHE_NAME);
   // ignoreSearch : /?session=<id> ou /?source=pwa retrouvent le shell hors ligne.
   const cached = await cache.match(event.request, { ignoreSearch: true });
 
-  const network = fetch(event.request).then((response) => {
-    // Une réponse redirigée servie à une navigation est refusée par Safari : on ne la garde pas.
-    if (response.ok && !response.redirected) {
-      // Clé sans query string, pour ne pas multiplier les copies du shell.
-      cache.put(url.pathname, response.clone());
-    }
-    return response;
-  });
-
   if (cached) {
-    event.waitUntil(network.catch(() => {}));
+    event.waitUntil(self.registration.update().catch(() => {}));
     return cached;
   }
+  // Page hors du shell : réseau, sans mise en cache (elle ne serait pas de la même version).
   try {
-    return await network;
+    return await fetch(event.request);
   } catch {
     return (await cache.match('/offline.html')) || Response.error();
   }

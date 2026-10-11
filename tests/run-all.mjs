@@ -38,6 +38,7 @@ if (remote) {
   suites.push(['Installable et hors ligne (sprint 1)', 'sprint1.e2e.mjs', [base]]);
   suites.push(['Séances locales IndexedDB (sprint 2)', 'sprint2.e2e.mjs', [base]]);
   suites.push(['Capacités de l\'appareil (sprint 6)', 'sprint6.e2e.mjs', [base]]);
+  suites.push(['Conflits If-Match (bonus, T9)', 'conflicts.e2e.mjs', [base]]);
   suites.push(['Synchronisation de bout en bout', 'remote-sync.e2e.mjs', [base]]);
 } else {
   // Copie du projet : le test de mise à jour modifie sw.js pour simuler un redéploiement.
@@ -58,6 +59,7 @@ if (remote) {
   suites.push(['Séances locales IndexedDB (sprint 2)', 'sprint2.e2e.mjs', [base]]);
   suites.push(['Mise à jour proposée (sprint 3)', 'sprint3.e2e.mjs', [base, join(copy, 'sw.js')]]);
   suites.push(['Capacités de l\'appareil (sprint 6)', 'sprint6.e2e.mjs', [base]]);
+  suites.push(['Conflits If-Match (bonus, T9)', 'conflicts.e2e.mjs', [base]]);
   suites.push(['Synchronisation et outbox (sprint 4)', 'sprint4.e2e.mjs', []]);
 }
 

@@ -8,7 +8,7 @@
 | Dépôt | <https://github.com/touilmohammed/pulsetrack> |
 | Version décrite | `v1.0` (cache `pulsetrack-v6`) |
 | Lancer en local | `npm install && npm start` → <http://localhost:3000> |
-| Tests | `npm test` (112 vérifications automatisées, voir § 11) |
+| Tests | `npm test` (125 vérifications automatisées, voir § 11) |
 
 ---
 
@@ -18,10 +18,11 @@ PulseTrack est un journal d'entraînement (course, vélo, marche, musculation) q
 
 - **Vanilla JS, sans framework ni build** : le HTML initial contient la vitrine publique (lisible par Googlebot et les agents IA sans exécuter de JavaScript) et chaque ligne du Service Worker est écrite à la main.
 - **Offline-first** : App Shell pré-caché par un Service Worker manuel (pas de Workbox), données dans IndexedDB (librairie `idb`, copiée dans le dépôt), outbox rejouée par Background Sync avec repli sur l'événement `online`.
-- **Synchronisation fiable** : écriture locale et opération d'envoi dans la même transaction, identifiant d'opération (`Idempotency-Key`) pour qu'un rejeu ne soit jamais appliqué deux fois, `If-Match` / 412 côté serveur.
+- **Synchronisation fiable** : écriture locale et opération d'envoi dans la même transaction, identifiant d'opération (`Idempotency-Key`) pour qu'un rejeu ne soit jamais appliqué deux fois.
+- **Conflits réconciliés** (bonus) : `If-Match` / 412, bannière « Garder la mienne / Prendre la leur », aucune donnée perdue.
 - **Mise à jour proposée, jamais imposée** : bannière « Nouvelle version disponible » pour ne pas perdre un formulaire en cours.
 - **Trois capacités de l'appareil** : géolocalisation (capacité principale), caméra / photo, partage — chacune après un geste, refus géré par un message.
-- **Mesures en production** : Lighthouse mobile 100 en Performance, Accessibilité, Bonnes pratiques et SEO ; JSON-LD sans erreur ; 112 tests automatisés au vert.
+- **Mesures en production** : Lighthouse mobile 100 en Performance, Accessibilité, Bonnes pratiques et SEO ; JSON-LD sans erreur ; 125 tests automatisés au vert.
 
 ## 2. Contexte
 
@@ -146,7 +147,7 @@ Les quatre stores existent dès la version 1, pour ne pas avoir à migrer la bas
 
 **Une séance** : `id`, `type` (`course`, `velo`, `marche`, `musculation`, `autre`), `date` (ISO 8601 UTC), `durationMin` (entier > 0), `distanceKm` (≥ 0, facultatif), `note` (≤ 500 caractères), `location` (`{lat, lng, accuracy}`, facultatif), `photoId`, `version` (attribuée par le serveur), `createdAt`, `updatedAt`, `syncState`.
 
-`syncState` vaut `pending` (en attente d'envoi), `synced`, `conflict` (412 reçu) ou `error` (refusée définitivement par le serveur, voir 6.3). L'identifiant est généré côté client : rejouer une création ne peut pas créer une seconde séance.
+`syncState` vaut `pending` (en attente d'envoi), `synced`, `conflict` (412 reçu) ou `error` (refusée définitivement par le serveur, voir 6.3). L'identifiant est généré côté client : rejouer une création ne peut pas créer une seconde séance. Champs locaux de détection des conflits : `localRev`, `serverRev`, et `serverCopy` pendant un conflit (§ 6.7).
 
 **Séances d'exemple.** Les trois `<li data-seed>` du HTML (pour les robots) sont importés une seule fois dans IndexedDB, si la base est vide **et** que le drapeau `seedsImported` est absent : sans ce drapeau, supprimer toutes ses séances ferait réapparaître les exemples. Leurs identifiants fixes (`seed-1`…) rendent l'import idempotent entre onglets. Ils sont marqués `seed: true` et ne partent jamais au serveur tant qu'ils ne sont pas modifiés.
 
@@ -163,7 +164,7 @@ Les opérations sont rejouées **dans l'ordre**, une par une :
 | 2xx | L'opération quitte l'outbox ; la séance prend la `version` du serveur et redevient `synced` s'il ne reste aucune autre opération pour elle |
 | `fetch` en échec (réseau absent) | Arrêt, l'opération **reste** dans l'outbox ; nouvel essai au prochain signal |
 | 5xx, 408, 429 | Serveur indisponible ou saturé : arrêt, l'opération reste |
-| 412 | Conflit : la copie du serveur est gardée à côté de la séance locale, état `conflict` ; rien n'est écrasé |
+| 412 | Conflit : la copie du serveur est gardée à côté de la séance locale, état `conflict` ; rien n'est écrasé (§ 6.7) |
 | Autre 4xx | Erreur définitive : réessayer bloquerait la file. L'opération est retirée, la séance **reste sur l'appareil** avec l'état `error` (badge « Refusée » et message du serveur), l'utilisateur est prévenu par un toast |
 
 Une opération n'est **jamais retirée avant la réponse du serveur**. Un verrou `navigator.locks.request('pulsetrack-sync', …)` garantit qu'un seul rejeu tourne à la fois entre les onglets et le Service Worker.
@@ -196,9 +197,32 @@ Après un rejeu réussi, `pullSessions()` lit `GET /api/sessions`. Une séance d
 
 Toutes les écritures sont **validées côté serveur** avec les mêmes règles que le client (type, date, durée, distance, note ≤ 500, coordonnées) : 422 sinon. Corps limité à 16 Ko (413).
 
-### 6.7 Conflits
+### 6.7 Conflits (bonus)
 
-**État en v1.0.** Le serveur gère complètement `If-Match` : il compare la version reçue à la sienne et répond **412 avec sa copie** sans rien écraser (testé dans `tests/api.test.mjs`). Le client sait déjà traiter un 412 (état `conflict`, copie du serveur conservée). L'envoi de `If-Match` par le client est derrière `FEATURES.conflicts` (désactivé tant que la bannière de choix « Garder la mienne / Prendre la leur » n'est pas livrée — bonus du sprint 8). Sans `If-Match`, une modification écrase la précédente côté serveur (dernier écrit gagnant).
+**Principe.** Chaque séance porte la `version` du serveur. Une modification part en `PUT` avec `If-Match: "<version sur laquelle elle repose>"`. Si le serveur a une version plus récente, il répond **412 avec sa copie** et n'écrit rien. La séance passe à l'état `conflict`, la copie du serveur est gardée à côté de la version locale (`serverCopy`) : **aucune des deux n'est perdue**, l'utilisateur choisit.
+
+**Quelle version mettre dans `If-Match` ?** C'est le point délicat, parce que deux onglets du même navigateur partagent la même base IndexedDB :
+
+- envoyer « la version de la séance au moment de l'envoi » ne détecterait jamais le conflit entre deux onglets (le second écraserait le premier sans que personne ne le sache) ;
+- envoyer « la version vue à l'ouverture du formulaire » créerait un **faux conflit** pour deux modifications successives dans le même onglet hors ligne (la seconde repose sur la première, pas sur la version du serveur).
+
+PulseTrack tient donc un numéro de **révision locale** : `localRev` (incrémenté à chaque enregistrement) et `serverRev` (la révision que le serveur a confirmée). Le formulaire retient la révision et la version qu'il a chargées ; chaque opération les porte (`parentRev`, `baseVersion`). À l'envoi, `ifMatchFor()` ([`data.js`](data.js)) choisit :
+
+| L'opération repose sur… | `If-Match` | Cas |
+| --- | --- | --- |
+| la révision confirmée par le serveur (`parentRev === serverRev`) | version actuelle | modifications successives dans le même onglet : pas de faux conflit |
+| une révision plus ancienne | version vue à l'ouverture du formulaire → 412 si le serveur a avancé | un autre onglet a modifié la séance entre-temps : conflit détecté |
+
+**Interface.** Badge « Conflit » et bouton « Résoudre le conflit » dans la liste ; toast d'avertissement, diffusé à tous les onglets ouverts (`BroadcastChannel`), et qu'un message informatif comme « Connexion rétablie » ne peut pas masquer. Le détail affiche une bannière qui compare les deux versions champ par champ (les différences en gras) et propose deux choix ([`resolveConflict()`](data.js)) :
+
+- **« Garder la mienne »** : la version locale est renvoyée, cette fois avec `If-Match` = version du serveur ; elle le remplace en connaissance de cause.
+- **« Prendre la leur »** : la copie du serveur remplace la version locale ; les envois encore en attente pour cette séance sont abandonnés.
+
+La photo, qui ne vit que sur l'appareil, est conservée dans les deux cas. Une séance en conflit ne peut pas être modifiée avant d'être résolue (« Modifier » ouvre la bannière).
+
+**Choix assumé : la suppression gagne.** `DELETE` n'envoie pas `If-Match` : supprimer une séance modifiée ailleurs la supprime.
+
+**Validation (T9).** `tests/conflicts.e2e.mjs` ouvre deux onglets hors ligne qui modifient la même séance (durée 11 dans l'un, 22 dans l'autre), puis rétablit le réseau : un seul 412, serveur à 11 (v2), local à 22 avec la copie 11, bannière affichée ; « Garder la mienne » → serveur à 22 (v3) ; second tour avec « Prendre la leur » → local repris à la valeur du serveur, rien renvoyé ; enfin deux modifications dans le même onglet → aucun conflit (13 vérifications).
 
 ## 7. Permissions et capacités de l'appareil
 
@@ -325,7 +349,8 @@ INP n'est pas mesurable en laboratoire ; le Total Blocking Time (0 ms) en est l'
 | Mise à jour | 14 | Pas de rechargement à la 1re installation, bannière sans perte de saisie, « Plus tard », SKIP_WAITING, anciens caches supprimés, bandeau hors ligne |
 | Synchronisation | 23 | Outbox hors ligne, rejeu sans doublon, serveur coupé alors que `navigator.onLine` est vrai, 4xx définitive, lecture réseau d'abord, **Background Sync seul** (page hors ligne, événement `sync` déclenché dans le SW) |
 | Capacités | 24 | Aucune permission au chargement, refus et acceptation de la position, réduction photo 3000 → 1280 px, photo jamais envoyée, partage natif / annulé / repli presse-papiers, détail hors ligne |
-| **Total** | **112** | **112 réussies, 0 en échec** |
+| Conflits (T9) | 13 | Deux onglets hors ligne → un seul 412, rien d'écrasé, bannière comparative, « Garder la mienne » (v3), « Prendre la leur », pas de faux conflit dans un même onglet |
+| **Total** | **125** | **125 réussies, 0 en échec** |
 
 ### 11.4 Tests manuels sur téléphone (iPhone, Safari)
 
@@ -351,7 +376,7 @@ INP n'est pas mesurable en laboratoire ; le Total Blocking Time (0 ms) en est l'
 | `deviceId` non secret | Lecture possible des séances par quelqu'un qui connaîtrait l'UUID | Pas de comptes (non-objectif) ; UUID aléatoire non devinable |
 | Limitation de débit **par instance** de la fonction | Pas une protection contre une attaque distribuée | Garde-fou contre une boucle d'envoi ou un abus simple |
 | `GET /api/sessions` lit chaque séance séparément dans Netlify Blobs | Lent avec des milliers de séances | Suffisant à l'échelle du TP |
-| Conflits : `If-Match` non envoyé par le client en v1.0 | Dernier écrit gagnant entre deux onglets | Bonus sprint 8 (§ 6.7) |
+| La suppression ne porte pas `If-Match` | Supprimer une séance modifiée dans un autre onglet la supprime | Choix assumé : la suppression gagne (§ 6.7) |
 | Push non livré en v1.0 ; sur iOS, push réservé aux apps installées | — | Bonus sprint 9 (§ 8) |
 | Crédits Netlify (gratuit : 300 / mois, 15 par déploiement de production) | Nombre de déploiements limité | Tests sur les aperçus de branche (gratuits) ; build ignoré si seuls la doc ou le README changent (`netlify.toml`) |
 
@@ -367,4 +392,4 @@ INP n'est pas mesurable en laboratoire ; le Total Blocking Time (0 ms) en est l'
 
 ### 12.3 Suite possible
 
-Bannière de conflit (sprint 8), notifications push (sprint 9), puis : comptes et authentification, synchronisation des photos, export GPX, graphiques de progression, synchronisation périodique en arrière-plan.
+Notifications push (sprint 9), puis : comptes et authentification, synchronisation des photos, export GPX, graphiques de progression, synchronisation périodique en arrière-plan.

@@ -13,6 +13,7 @@ TP M2 Informatique — Università di Corsica.
 - Journal de séances utilisable en **mode avion** (App Shell en cache, données dans IndexedDB)
 - **Installable** sur l'écran d'accueil (Android, iOS, ordinateur)
 - **Synchronisation** automatique au retour du réseau, sans doublon (outbox, Background Sync + repli `online`)
+- **Conflits** détectés (`If-Match` / 412) et résolus par l'utilisateur : « Garder la mienne » ou « Prendre la leur »
 - **Mise à jour** proposée par une bannière, jamais imposée pendant une saisie
 - **Position, photo et partage** d'une séance, permissions demandées après un geste
 - Vitrine lisible par les robots et les agents IA (JSON-LD, `robots.txt`, `sitemap.xml`, `llms.txt`, jumelle Markdown)
@@ -35,7 +36,7 @@ npm test                                   # tests unitaires de l'API + tests de
 npm test -- https://pulsetrackisco.netlify.app   # tests applicables contre un déploiement
 ```
 
-Les tests de bout en bout pilotent un vrai navigateur sans interface (`puppeteer-core`) : Edge par défaut sous Windows, sinon indiquer `BROWSER_PATH=/chemin/vers/chrome`. Détail des 112 vérifications : [DOC-TECHNIQUE.md § 11](DOC-TECHNIQUE.md#11-mesures).
+Les tests de bout en bout pilotent un vrai navigateur sans interface (`puppeteer-core`) : Edge par défaut sous Windows, sinon indiquer `BROWSER_PATH=/chemin/vers/chrome`. Détail des 125 vérifications : [DOC-TECHNIQUE.md § 11](DOC-TECHNIQUE.md#11-mesures).
 
 ## Architecture
 
@@ -67,3 +68,4 @@ Avant chaque déploiement qui touche un fichier du shell : incrémenter `CACHE_N
 | 5 | Visibilité SEO et agents IA, en-têtes de sécurité | v0.5 |
 | 6 | Capacités : position, photo, partage | v0.6 |
 | 7 | Document technique, tests automatisés | v1.0 |
+| 8 | Bonus : conflits `If-Match`, bannière de résolution | v1.1 |

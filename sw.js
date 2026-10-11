@@ -1,6 +1,6 @@
 // Service Worker PulseTrack — écrit à la main (pas de Workbox).
 // À incrémenter à chaque déploiement qui modifie un fichier du shell.
-const CACHE_NAME = 'pulsetrack-v6';
+const CACHE_NAME = 'pulsetrack-v7';
 
 // Base IndexedDB et rejeu de l'outbox, partagés avec la page (Background Sync).
 importScripts('/vendor/idb.js', '/data.js');

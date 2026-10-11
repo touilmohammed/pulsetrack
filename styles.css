@@ -140,6 +140,16 @@ textarea {
 textarea {
   resize: vertical;
 }
+/* Safari iOS impose une largeur minimale native aux champs de date : ils débordaient de la carte */
+input[type="datetime-local"] {
+  -webkit-appearance: none;
+  appearance: none;
+  min-width: 0;
+  display: block;
+}
+input[type="datetime-local"]::-webkit-date-and-time-value {
+  text-align: left;
+}
 
 .btn {
   min-height: 44px;

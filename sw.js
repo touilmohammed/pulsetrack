@@ -1,6 +1,6 @@
 // Service Worker PulseTrack — écrit à la main (pas de Workbox).
 // À incrémenter à chaque déploiement qui modifie un fichier du shell.
-const CACHE_NAME = 'pulsetrack-v7';
+const CACHE_NAME = 'pulsetrack-v8';
 
 // Base IndexedDB et rejeu de l'outbox, partagés avec la page (Background Sync).
 importScripts('/vendor/idb.js', '/data.js');
@@ -125,3 +125,44 @@ async function replayOutbox() {
   clients.forEach((client) => client.postMessage({ type: 'SYNC_RESULT', result }));
   if (result.retry) throw new Error('Outbox non vidée : nouvel essai');
 }
+
+// --- Notifications push (rappels d'entraînement) -----------------------------
+// Le serveur envoie { title, body, tag, url }. Le tag unique remplace un rappel encore affiché
+// au lieu d'en empiler un second.
+self.addEventListener('push', (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {
+    data = { body: event.data?.text() };
+  }
+  event.waitUntil(self.registration.showNotification(data.title || 'PulseTrack', {
+    body: data.body || "C'est l'heure de ta séance !",
+    icon: '/icons/icon-192.png',
+    tag: data.tag || 'pulsetrack-reminder',
+    renotify: true,
+    lang: 'fr',
+    data: { url: data.url || '/#session-form' },
+  }));
+});
+
+// Clic : on ramène l'app déjà ouverte sur « Nouvelle séance » (sans effacer une saisie en cours),
+// sinon on l'ouvre directement sur le formulaire.
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = new URL(event.notification.data?.url || '/#session-form', self.location.origin).href;
+  event.waitUntil((async () => {
+    const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const client = windows.find((c) => new URL(c.url).origin === self.location.origin);
+    if (client) {
+      try {
+        await client.focus();
+      } catch {
+        // Focus refusé par le navigateur : le message suffit à afficher le formulaire.
+      }
+      client.postMessage({ type: 'OPEN_NEW_SESSION' });
+      return;
+    }
+    await self.clients.openWindow(url);
+  })());
+});

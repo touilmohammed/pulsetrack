@@ -1,6 +1,6 @@
 // Service Worker PulseTrack — écrit à la main (pas de Workbox).
 // À incrémenter à chaque déploiement qui modifie un fichier du shell.
-const CACHE_NAME = 'pulsetrack-v2';
+const CACHE_NAME = 'pulsetrack-v3';
 
 // App Shell pré-caché à l'installation. sw.js n'y figure jamais :
 // le navigateur doit toujours pouvoir récupérer sa nouvelle version sur le réseau.
@@ -22,8 +22,21 @@ const APP_SHELL = [
 self.addEventListener('install', (event) => {
   // addAll est atomique : si un seul fichier échoue, l'installation échoue
   // et l'ancien Service Worker reste en place.
-  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)));
-  // Pas de skipWaiting() automatique : la mise à jour sera proposée à l'utilisateur (sprint 3).
+  // cache: 'reload' contourne le cache HTTP : la nouvelle version pré-cache des fichiers frais.
+  event.waitUntil(
+    caches.open(CACHE_NAME)
+      .then((cache) => cache.addAll(APP_SHELL.map((url) => new Request(url, { cache: 'reload' }))))
+  );
+  // Pas de skipWaiting() automatique : la nouvelle version attend que l'utilisateur
+  // accepte la mise à jour (message SKIP_WAITING), pour ne pas perdre un formulaire en cours.
+});
+
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  } else if (event.data?.type === 'GET_VERSION') {
+    event.ports[0]?.postMessage({ version: CACHE_NAME });
+  }
 });
 
 self.addEventListener('activate', (event) => {

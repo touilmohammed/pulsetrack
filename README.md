@@ -36,7 +36,7 @@ npm test                                   # tests unitaires de l'API + tests de
 npm test -- https://pulsetrackisco.netlify.app   # tests applicables contre un déploiement
 ```
 
-Les tests de bout en bout pilotent un vrai navigateur sans interface (`puppeteer-core`) : Edge par défaut sous Windows, sinon indiquer `BROWSER_PATH=/chemin/vers/chrome`. Détail des 125 vérifications : [DOC-TECHNIQUE.md § 11](DOC-TECHNIQUE.md#11-mesures).
+Les tests de bout en bout pilotent un vrai navigateur sans interface (`puppeteer-core`) : Edge par défaut sous Windows, sinon indiquer `BROWSER_PATH=/chemin/vers/chrome`. Détail des 126 vérifications : [DOC-TECHNIQUE.md § 11](DOC-TECHNIQUE.md#11-mesures).
 
 ## Architecture
 

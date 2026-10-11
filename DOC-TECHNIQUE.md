@@ -8,7 +8,7 @@
 | Dépôt | <https://github.com/touilmohammed/pulsetrack> |
 | Version décrite | `v1.0` (cache `pulsetrack-v6`) |
 | Lancer en local | `npm install && npm start` → <http://localhost:3000> |
-| Tests | `npm test` (125 vérifications automatisées, voir § 11) |
+| Tests | `npm test` (126 vérifications automatisées, voir § 11) |
 
 ---
 
@@ -22,7 +22,7 @@ PulseTrack est un journal d'entraînement (course, vélo, marche, musculation) q
 - **Conflits réconciliés** (bonus) : `If-Match` / 412, bannière « Garder la mienne / Prendre la leur », aucune donnée perdue.
 - **Mise à jour proposée, jamais imposée** : bannière « Nouvelle version disponible » pour ne pas perdre un formulaire en cours.
 - **Trois capacités de l'appareil** : géolocalisation (capacité principale), caméra / photo, partage — chacune après un geste, refus géré par un message.
-- **Mesures en production** : Lighthouse mobile 100 en Performance, Accessibilité, Bonnes pratiques et SEO ; JSON-LD sans erreur ; 125 tests automatisés au vert.
+- **Mesures en production** : Lighthouse mobile 100 en Performance, Accessibilité, Bonnes pratiques et SEO ; JSON-LD sans erreur ; 126 tests automatisés au vert.
 
 ## 2. Contexte
 
@@ -220,6 +220,8 @@ PulseTrack tient donc un numéro de **révision locale** : `localRev` (incrémen
 
 La photo, qui ne vit que sur l'appareil, est conservée dans les deux cas. Une séance en conflit ne peut pas être modifiée avant d'être résolue (« Modifier » ouvre la bannière).
 
+**Incident : Netlify ne transmet pas `If-Match` à la Function.** Tous les tests passaient en local, mais sur l'aperçu Netlify aucun conflit n'était détecté. Vérification par `curl` sur le déploiement : `PUT` avec `If-Match: "99"` (version périmée) → **200** ; le même code en local → 412. L'en-tête standard est retiré par le CDN avant la Function. Correctif : le client envoie aussi un double non standard **`X-If-Match`**, que le serveur lit si `If-Match` est absent (`If-Match` reste lu en premier, pour tout hébergeur qui le transmet). Après correctif, sur le déploiement : `X-If-Match: "99"` → 412, et le test T9 complet passe contre Netlify.
+
 **Choix assumé : la suppression gagne.** `DELETE` n'envoie pas `If-Match` : supprimer une séance modifiée ailleurs la supprime.
 
 **Validation (T9).** `tests/conflicts.e2e.mjs` ouvre deux onglets hors ligne qui modifient la même séance (durée 11 dans l'un, 22 dans l'autre), puis rétablit le réseau : un seul 412, serveur à 11 (v2), local à 22 avec la copie 11, bannière affichée ; « Garder la mienne » → serveur à 22 (v3) ; second tour avec « Prendre la leur » → local repris à la valeur du serveur, rien renvoyé ; enfin deux modifications dans le même onglet → aucun conflit (13 vérifications).
@@ -343,14 +345,14 @@ INP n'est pas mesurable en laboratoire ; le Total Blocking Time (0 ms) en est l'
 
 | Suite | Vérifications | Ce qui est prouvé |
 | --- | --- | --- |
-| API (unitaires) | 20 | Validation, création, rejeu idempotent, `If-Match` / 412, upsert, suppression, isolation par appareil, limitation de débit |
+| API (unitaires) | 21 | Validation, création, rejeu idempotent, `If-Match` et `X-If-Match` / 412, upsert, suppression, isolation par appareil, limitation de débit |
 | Installable et hors ligne | 10 | SW actif, cache versionné sans `sw.js`, manifest et installabilité sans erreur, shell / `?session=` / `offline.html` hors ligne |
 | Séances locales | 21 | CRUD, validation, import unique des exemples, XSS, filtre, hors ligne, non-réimport |
 | Mise à jour | 14 | Pas de rechargement à la 1re installation, bannière sans perte de saisie, « Plus tard », SKIP_WAITING, anciens caches supprimés, bandeau hors ligne |
 | Synchronisation | 23 | Outbox hors ligne, rejeu sans doublon, serveur coupé alors que `navigator.onLine` est vrai, 4xx définitive, lecture réseau d'abord, **Background Sync seul** (page hors ligne, événement `sync` déclenché dans le SW) |
 | Capacités | 24 | Aucune permission au chargement, refus et acceptation de la position, réduction photo 3000 → 1280 px, photo jamais envoyée, partage natif / annulé / repli presse-papiers, détail hors ligne |
 | Conflits (T9) | 13 | Deux onglets hors ligne → un seul 412, rien d'écrasé, bannière comparative, « Garder la mienne » (v3), « Prendre la leur », pas de faux conflit dans un même onglet |
-| **Total** | **125** | **125 réussies, 0 en échec** |
+| **Total** | **126** | **126 réussies, 0 en échec** |
 
 ### 11.4 Tests manuels sur téléphone (iPhone, Safari)
 
@@ -388,6 +390,7 @@ INP n'est pas mesurable en laboratoire ; le Total Blocking Time (0 ms) en est l'
 | `syncState` : `synced`, `pending`, `conflict` | + `error` | Représenter une séance refusée définitivement (4xx) sans bloquer la file |
 | Type `vélo` | Valeur `velo` (affichage « Vélo ») | Valeur sans accent, plus sûre dans les URL et l'API |
 | Lien partagé | Lien de l'app, pas de la séance | `/?session=<id>` n'a de sens que sur l'appareil qui détient la séance |
+| `If-Match` seul | `If-Match` + double `X-If-Match` | Netlify retire `If-Match` avant la Function (§ 6.7) |
 | `npm start` avec `serve` | Serveur Node maison | Sert la PWA **et** l'API sur la même origine, applique `_headers` comme Netlify |
 
 ### 12.3 Suite possible

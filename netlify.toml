@@ -3,6 +3,9 @@
 [build]
   command = "node scripts/build.mjs"
   publish = "dist"
+  # Pas de nouveau déploiement si le commit ne touche que la documentation (chaque déploiement
+  # de production coûte des crédits Netlify). Code de sortie 0 = build ignoré.
+  ignore = "git diff --quiet $CACHED_COMMIT_REF $COMMIT_REF -- . ':(exclude)DOC-TECHNIQUE.md' ':(exclude)README.md' ':(exclude)docs/'"
 
 # API de synchronisation : netlify/functions/api.mjs, servie sur /api/* (même origine que la PWA).
 [functions]

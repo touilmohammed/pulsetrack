@@ -5,8 +5,17 @@ PWA de suivi sportif offline-first : enregistrez vos séances (course, vélo, ma
 TP M2 Informatique — Università di Corsica.
 
 - **Production :** <https://pulsetrackisco.netlify.app>
-- **Document technique :** [DOC-TECHNIQUE.md](DOC-TECHNIQUE.md) _(à venir, sprint 7)_
+- **Document technique :** [DOC-TECHNIQUE.md](DOC-TECHNIQUE.md)
 - **Sources :** <https://github.com/touilmohammed/pulsetrack>
+
+## Fonctionnalités
+
+- Journal de séances utilisable en **mode avion** (App Shell en cache, données dans IndexedDB)
+- **Installable** sur l'écran d'accueil (Android, iOS, ordinateur)
+- **Synchronisation** automatique au retour du réseau, sans doublon (outbox, Background Sync + repli `online`)
+- **Mise à jour** proposée par une bannière, jamais imposée pendant une saisie
+- **Position, photo et partage** d'une séance, permissions demandées après un geste
+- Vitrine lisible par les robots et les agents IA (JSON-LD, `robots.txt`, `sitemap.xml`, `llms.txt`, jumelle Markdown)
 
 ## Lancer en local
 
@@ -17,7 +26,16 @@ npm install
 npm start
 ```
 
-L'app et l'API sont servies sur <http://localhost:3000>, sur la même origine comme en production. En local, les données de l'API sont écrites dans `server/data/db.json` (ignoré par Git). Variables utiles : `PORT`, `DATA_FILE`.
+L'app et l'API sont servies sur <http://localhost:3000>, sur la même origine comme en production, avec les en-têtes de `_headers`. Les données de l'API sont écrites dans `server/data/db.json` (ignoré par Git). Variables utiles : `PORT`, `DATA_FILE`.
+
+## Tests
+
+```bash
+npm test                                   # tests unitaires de l'API + tests de bout en bout en local
+npm test -- https://pulsetrackisco.netlify.app   # tests applicables contre un déploiement
+```
+
+Les tests de bout en bout pilotent un vrai navigateur sans interface (`puppeteer-core`) : Edge par défaut sous Windows, sinon indiquer `BROWSER_PATH=/chemin/vers/chrome`. Détail des 112 vérifications : [DOC-TECHNIQUE.md § 11](DOC-TECHNIQUE.md#11-mesures).
 
 ## Architecture
 
@@ -26,15 +44,16 @@ L'app et l'API sont servies sur <http://localhost:3000>, sur la même origine co
 | `index.html`, `styles.css`, `app.js` | Vitrine publique et interface (vanilla JS, sans framework) |
 | `data.js` | IndexedDB (librairie `vendor/idb.js`), outbox et synchronisation, partagé par la page et le Service Worker |
 | `sw.js` | Service Worker écrit à la main : App Shell, stratégies de cache, mise à jour, Background Sync |
-| `server/api.mjs` | API `/api/sessions` (idempotence par `Idempotency-Key`, `If-Match` / 412) |
+| `server/api.mjs` | API `/api/sessions` (validation, idempotence par `Idempotency-Key`, `If-Match` / 412, limitation de débit) |
 | `netlify/functions/api.mjs` | L'API en production (Netlify Function + Netlify Blobs) |
 | `server/server.mjs` | Serveur de développement : PWA + API, stockage dans un fichier JSON |
+| `tests/` | Tests automatisés (`npm test`) |
 
 ## Déploiement
 
-Chaque push sur `main` déclenche un déploiement Netlify ; chaque branche dispose d'un aperçu. Le « build » (`scripts/build.mjs`) copie uniquement les fichiers publics dans `dist/` ; l'API est déployée comme Netlify Function sur `/api/*`.
+Chaque push sur `main` déclenche un déploiement Netlify ; chaque branche dispose d'un aperçu (gratuit). Le « build » (`scripts/build.mjs`) copie uniquement les fichiers publics dans `dist/` ; l'API est déployée comme Netlify Function sur `/api/*`. Un commit qui ne touche que la documentation ne redéploie pas le site (`ignore` dans `netlify.toml`).
 
-Avant chaque déploiement qui touche un fichier du shell : incrémenter `CACHE_NAME` dans `sw.js`.
+Avant chaque déploiement qui touche un fichier du shell : incrémenter `CACHE_NAME` dans `sw.js` et `lastmod` dans `sitemap.xml`.
 
 ## Avancement
 
@@ -45,3 +64,6 @@ Avant chaque déploiement qui touche un fichier du shell : incrémenter `CACHE_N
 | 2 | Séances locales dans IndexedDB | v0.2 |
 | 3 | Mise à jour proposée, bandeau hors ligne | v0.3 |
 | 4 | API, outbox et synchronisation | v0.4 |
+| 5 | Visibilité SEO et agents IA, en-têtes de sécurité | v0.5 |
+| 6 | Capacités : position, photo, partage | v0.6 |
+| 7 | Document technique, tests automatisés | v1.0 |

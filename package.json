@@ -1,15 +1,19 @@
 {
   "name": "pulsetrack",
-  "version": "0.4.0",
+  "version": "1.0.0",
   "private": true,
   "description": "PWA de suivi sportif offline-first (TP M2)",
   "engines": {
     "node": ">=22.12"
   },
   "scripts": {
-    "start": "node server/server.mjs"
+    "start": "node server/server.mjs",
+    "test": "node tests/run-all.mjs"
   },
   "dependencies": {
     "@netlify/blobs": "^11.1.4"
+  },
+  "devDependencies": {
+    "puppeteer-core": "^24.43.1"
   }
 }

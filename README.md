@@ -4,7 +4,7 @@ PWA de suivi sportif offline-first : enregistrez vos séances (course, vélo, ma
 
 TP M2 Informatique — Università di Corsica.
 
-- **Production :** _à compléter après le premier déploiement Netlify_
+- **Production :** <https://pulsetrackisco.netlify.app>
 - **Document technique :** [DOC-TECHNIQUE.md](DOC-TECHNIQUE.md) _(à venir, sprint 7)_
 
 ## Lancer en local
@@ -20,6 +20,8 @@ L'app est servie sur <http://localhost:3000>. `serve.json` désactive `cleanUrls
 ## Déploiement
 
 Chaque push sur `main` déclenche un déploiement Netlify (site statique, pas de build, voir `netlify.toml`). Chaque branche dispose d'un aperçu.
+
+Sources : <https://github.com/touilmohammed/pulsetrack>
 
 ## Avancement
 

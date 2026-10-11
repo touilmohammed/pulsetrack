@@ -1,0 +1,4 @@
+# Site statique : pas de build, publication de la racine du dépôt.
+[build]
+  publish = "."
+  command = ""

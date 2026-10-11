@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PulseTrack — journal sportif hors ligne</title>
+  <meta name="description" content="PulseTrack est un journal d'entraînement qui fonctionne sans réseau : enregistrez vos séances de course, vélo, marche ou musculation, même en montagne.">
+  <meta name="theme-color" content="#0f766e" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0b1f1d" media="(prefers-color-scheme: dark)">
+  <meta name="color-scheme" content="light dark">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#journal">Aller au journal</a>
+
+  <header class="site-header">
+    <p class="brand"><span class="brand-mark" aria-hidden="true">●</span> PulseTrack</p>
+  </header>
+
+  <main>
+    <section class="hero" aria-labelledby="titre">
+      <h1 id="titre">Votre journal sportif, même sans réseau</h1>
+      <p class="lead">
+        PulseTrack enregistre vos séances de course, de vélo, de marche ou de musculation
+        directement sur votre téléphone. Pas de 4G sur le sentier ou à la salle ?
+        Vos séances restent disponibles et partent au serveur dès le retour du réseau.
+      </p>
+    </section>
+
+    <section class="card" aria-labelledby="form-titre">
+      <h2 id="form-titre">Nouvelle séance</h2>
+      <form id="session-form" class="session-form">
+        <div class="field">
+          <label for="type">Type</label>
+          <select id="type" name="type" required>
+            <option value="course">Course</option>
+            <option value="velo">Vélo</option>
+            <option value="marche">Marche</option>
+            <option value="musculation">Musculation</option>
+            <option value="autre">Autre</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="date">Date</label>
+          <input id="date" name="date" type="datetime-local" required>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="durationMin">Durée (min)</label>
+            <input id="durationMin" name="durationMin" type="number" inputmode="numeric" min="1" step="1" required>
+          </div>
+          <div class="field">
+            <label for="distanceKm">Distance (km)</label>
+            <input id="distanceKm" name="distanceKm" type="number" inputmode="decimal" min="0" step="0.01">
+          </div>
+        </div>
+        <div class="field">
+          <label for="note">Note</label>
+          <textarea id="note" name="note" rows="3" maxlength="500"></textarea>
+        </div>
+        <button type="submit" class="btn btn-primary">Enregistrer la séance</button>
+      </form>
+    </section>
+
+    <section id="journal" class="card" aria-labelledby="journal-titre">
+      <h2 id="journal-titre">Exemples de séances</h2>
+      <ul id="session-list" class="session-list">
+        <li data-seed="seed-1">
+          <span class="session-type">Course</span>
+          <span class="session-meta">45 min · 8,2 km</span>
+          <span class="session-note">Sortie trail sur le sentier de la Restonica, sans réseau au-dessus du lac.</span>
+        </li>
+        <li data-seed="seed-2">
+          <span class="session-type">Musculation</span>
+          <span class="session-meta">60 min</span>
+          <span class="session-note">Séance haut du corps en salle au sous-sol : 5 séries de tractions et de développé couché.</span>
+        </li>
+        <li data-seed="seed-3">
+          <span class="session-type">Vélo</span>
+          <span class="session-meta">95 min · 38 km</span>
+          <span class="session-note">Boucle de Corte par la vallée du Tavignano, retour au crépuscule.</span>
+        </li>
+      </ul>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <p>PulseTrack — TP M2 Informatique, Università di Corsica.</p>
+  </footer>
+</body>
+</html>

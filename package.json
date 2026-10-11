@@ -1,0 +1,9 @@
+{
+  "name": "pulsetrack",
+  "version": "0.0.0",
+  "private": true,
+  "description": "PWA de suivi sportif offline-first (TP M2)",
+  "scripts": {
+    "start": "npx --yes serve@14 -l 3000 ."
+  }
+}

@@ -446,6 +446,49 @@ input[type="datetime-local"]::-webkit-date-and-time-value {
   margin-top: 12px;
 }
 
+/* Conflit de synchronisation */
+.conflict {
+  margin: 12px 0;
+  padding: 12px;
+  border: 2px solid var(--danger);
+  border-radius: 8px;
+}
+.conflict h3 {
+  margin: 0 0 4px;
+  font-size: 1rem;
+  color: var(--danger);
+}
+.conflict p {
+  margin: 0 0 8px;
+  font-size: 0.9375rem;
+}
+.conflict-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+  table-layout: fixed;
+}
+.conflict-table th,
+.conflict-table td {
+  padding: 6px 4px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--border);
+  overflow-wrap: anywhere;
+}
+.conflict-table thead th:first-child {
+  width: 26%;
+}
+.conflict-table tr.differs td {
+  font-weight: 700;
+}
+.conflict-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
 /* Bandeaux (hors ligne, mise à jour) */
 .banner {
   position: sticky;

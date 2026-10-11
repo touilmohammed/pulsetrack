@@ -210,6 +210,20 @@
         <h2 id="detail-title">Séance</h2>
         <button type="button" id="detail-close" class="btn btn-secondary btn-small">Fermer</button>
       </div>
+      <section id="conflict-panel" class="conflict" aria-labelledby="conflict-title" hidden>
+        <h3 id="conflict-title">Cette séance a été modifiée ailleurs</h3>
+        <p>Le serveur a reçu une autre modification entre-temps. Rien n'a été écrasé : choisissez la version à garder.</p>
+        <table class="conflict-table">
+          <thead>
+            <tr><th scope="col"></th><th scope="col">Ma version</th><th scope="col">Version du serveur</th></tr>
+          </thead>
+          <tbody id="conflict-rows"></tbody>
+        </table>
+        <div class="conflict-actions">
+          <button type="button" id="conflict-mine" class="btn btn-primary">Garder la mienne</button>
+          <button type="button" id="conflict-theirs" class="btn btn-secondary">Prendre la leur</button>
+        </div>
+      </section>
       <p id="detail-meta" class="session-meta"></p>
       <p id="detail-note" class="session-note"></p>
       <img id="detail-photo" class="detail-photo" alt="Photo de la séance" hidden>

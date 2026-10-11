@@ -5,7 +5,7 @@
   'use strict';
 
   // Bonus activés sprint par sprint (voir plan) : désactivés tant que leur sprint n'est pas validé.
-  const FEATURES = { conflicts: false, push: false };
+  const FEATURES = { conflicts: true, push: false };
 
   const API_BASE = '/api';
   const DB_NAME = 'pulsetrack-db';
@@ -87,13 +87,20 @@
     return { id, type, date, durationMin, distanceKm, note, location };
   }
 
-  function outboxEntry(type, session) {
+  // Révisions locales (détection des conflits) :
+  //   localRev  : incrémentée à chaque enregistrement local de la séance ;
+  //   serverRev : la révision locale que le serveur a confirmée (sa version = session.version).
+  // Chaque opération retient la révision sur laquelle l'utilisateur a travaillé (parentRev) et la
+  // version serveur qu'il voyait alors (baseVersion). Voir ifMatchFor().
+  function outboxEntry(type, session, base) {
     return {
       opId: uuid(), // Idempotency-Key : un rejeu n'est jamais appliqué deux fois par le serveur
       type,
       sessionId: session.id,
       payload: type === 'delete' ? null : toPayload(session),
-      baseVersion: session.version ?? null,
+      rev: session.localRev ?? 0,
+      parentRev: base ? base.rev : null,
+      baseVersion: base ? base.version : session.version ?? null,
       timestamp: Date.now(),
     };
   }
@@ -103,25 +110,37 @@
   // photo : undefined = inchangée, null = retirée, { blob, width, height } = nouvelle photo réduite.
   // La photo reste sur l'appareil (store photos) : seule sa référence photoId vit dans la séance,
   // et toPayload() ne l'envoie jamais au serveur.
-  async function saveSession(fields, id, { photo } = {}) {
+  // base : { rev, version } de la séance telle que le formulaire l'a chargée (absent = état courant).
+  async function saveSession(fields, id, { photo, base } = {}) {
     const database = await db();
     const tx = database.transaction(['sessions', 'outbox', 'photos'], 'readwrite');
     const sessions = tx.objectStore('sessions');
     const now = new Date().toISOString();
     const existing = id ? await sessions.get(id) : null;
     const session = existing
-      ? { ...existing, ...fields, seed: false, updatedAt: now, syncState: 'pending' }
+      ? {
+        ...existing,
+        ...fields,
+        seed: false,
+        localRev: (existing.localRev ?? 0) + 1,
+        updatedAt: now,
+        syncState: 'pending',
+      }
       : {
         id: uuid(),
         ...fields,
         location: fields.location ?? null,
         photoId: null,
         version: null, // attribuée par le serveur, utilisée par If-Match
+        localRev: 0,
+        serverRev: null,
         seed: false,
         createdAt: now,
         updatedAt: now,
         syncState: 'pending',
       };
+    // Sans base explicite, la modification repose sur l'état local courant.
+    const editBase = existing ? base ?? { rev: existing.localRev ?? 0, version: existing.version ?? null } : null;
     if (photo !== undefined) {
       const photos = tx.objectStore('photos');
       if (session.photoId) await photos.delete(session.photoId);
@@ -141,7 +160,7 @@
     await sessions.put(session);
     // Création : POST. Modification : PUT (le serveur crée la séance s'il ne la connaît pas encore,
     // cas d'un exemple modifié).
-    await tx.objectStore('outbox').add(outboxEntry(existing ? 'update' : 'create', session));
+    await tx.objectStore('outbox').add(outboxEntry(existing ? 'update' : 'create', session, editBase));
     await tx.done;
     return session;
   }
@@ -172,6 +191,19 @@
   }
 
   // --- Synchronisation ------------------------------------------------------
+  // If-Match : la version serveur sur laquelle repose la modification.
+  // - L'opération part de la révision que le serveur a confirmée (parentRev === serverRev) :
+  //   elle repose sur la version actuelle du serveur → If-Match = session.version.
+  //   C'est le cas de deux modifications successives dans le même onglet : pas de faux conflit.
+  // - Elle part d'une révision plus ancienne : quelqu'un (un autre onglet) a modifié la séance entre-temps
+  //   → If-Match = la version vue à l'ouverture du formulaire ; si le serveur a avancé, il répond 412.
+  // - Opération créée avant le sprint 8 (sans parentRev) : version courante, comme auparavant.
+  function ifMatchFor(op, session) {
+    if (!session) return null;
+    if (op.parentRev == null || op.parentRev === (session.serverRev ?? 0)) return session.version ?? null;
+    return op.baseVersion ?? null;
+  }
+
   function buildRequest(op, session, deviceId) {
     const headers = {
       'X-Device-Id': deviceId,
@@ -181,11 +213,8 @@
     if (op.type === 'delete') return new Request(url, { method: 'DELETE', headers });
 
     headers['Content-Type'] = 'application/json';
-    // If-Match : la version serveur sur laquelle reposent les modifications locales. C'est celle de la
-    // séance au moment de l'envoi, mise à jour après chaque opération confirmée (sprint 8).
-    if (FEATURES.conflicts && op.type === 'update' && session?.version != null) {
-      headers['If-Match'] = `"${session.version}"`;
-    }
+    const ifMatch = FEATURES.conflicts && op.type === 'update' ? ifMatchFor(op, session) : null;
+    if (ifMatch != null) headers['If-Match'] = `"${ifMatch}"`;
     return new Request(url, {
       method: op.type === 'create' ? 'POST' : 'PUT',
       headers,
@@ -202,7 +231,10 @@
     const session = await tx.objectStore('sessions').get(op.sessionId);
     if (session && op.type !== 'delete') {
       const remaining = (await tx.objectStore('outbox').getAll()).some((o) => o.sessionId === op.sessionId);
-      if (serverSession) session.version = serverSession.version;
+      if (serverSession) {
+        session.version = serverSession.version;
+        session.serverRev = op.rev ?? session.localRev ?? 0;
+      }
       session.syncState = remaining ? 'pending' : 'synced';
       delete session.syncError;
       await tx.objectStore('sessions').put(session);
@@ -238,6 +270,49 @@
       await tx.objectStore('sessions').put(session);
     }
     await tx.done;
+  }
+
+  // Résolution d'un conflit (choix de l'utilisateur dans la bannière) :
+  // - 'mine'   : la version locale est renvoyée, cette fois basée sur la version du serveur (If-Match
+  //              à jour) ; elle remplace la sienne en toute connaissance de cause.
+  // - 'theirs' : la copie du serveur remplace la version locale, les envois en attente sont abandonnés.
+  // La photo, qui ne vit que sur l'appareil, est conservée dans les deux cas.
+  async function resolveConflict(id, choice) {
+    const database = await db();
+    const tx = database.transaction(['sessions', 'outbox'], 'readwrite');
+    const sessions = tx.objectStore('sessions');
+    const outbox = tx.objectStore('outbox');
+    const session = await sessions.get(id);
+    if (!session || session.syncState !== 'conflict' || !session.serverCopy) {
+      await tx.done;
+      return null;
+    }
+    const server = session.serverCopy;
+    // Les opérations encore en attente pour cette séance reposent sur l'état en conflit : on les remplace.
+    const stale = (await outbox.getAll()).filter((op) => op.sessionId === id);
+    await Promise.all(stale.map((op) => outbox.delete(op.id)));
+
+    const localRev = (session.localRev ?? 0) + 1;
+    let resolved;
+    if (choice === 'theirs') {
+      resolved = {
+        ...server,
+        photoId: session.photoId ?? null,
+        seed: false,
+        localRev,
+        serverRev: localRev,
+        syncState: 'synced',
+      };
+    } else {
+      resolved = { ...session, version: server.version, localRev, serverRev: localRev - 1, syncState: 'pending' };
+      delete resolved.serverCopy;
+      await outbox.add(outboxEntry('update', resolved, { rev: localRev - 1, version: server.version }));
+    }
+    delete resolved.serverCopy;
+    delete resolved.syncError;
+    await sessions.put(resolved);
+    await tx.done;
+    return resolved;
   }
 
   async function readBody(response) {
@@ -315,10 +390,13 @@
       if (pendingIds.has(server.id)) continue;
       const local = await tx.objectStore('sessions').get(server.id);
       if (local && (local.syncState !== 'synced' || (local.version ?? 0) >= server.version)) continue;
+      const rev = local ? (local.localRev ?? 0) + 1 : 0;
       await tx.objectStore('sessions').put({
         ...server,
         photoId: local?.photoId ?? null,
         seed: false,
+        localRev: rev,
+        serverRev: rev,
         syncState: 'synced',
       });
       updated++;
@@ -342,5 +420,6 @@
     countPending,
     syncPendingData,
     pullSessions,
+    resolveConflict,
   };
 })(self);

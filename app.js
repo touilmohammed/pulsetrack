@@ -3,12 +3,17 @@
 // --- Toasts -----------------------------------------------------------------
 const toast = document.getElementById('toast');
 let toastTimer = null;
+let toastPriority = 0;
 
-function showToast(message, duration = 3500) {
+// Un seul emplacement de toast : un message informatif (priorité 0, ex. « Connexion rétablie »)
+// ne remplace pas un avertissement encore affiché (priorité 1, ex. conflit ou refus du serveur).
+function showToast(message, duration = 3500, priority = 0) {
+  if (!toast.hidden && priority < toastPriority) return;
   toast.textContent = message;
   toast.hidden = false;
+  toastPriority = priority;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { toast.hidden = true; }, duration);
+  toastTimer = setTimeout(() => { toast.hidden = true; toastPriority = 0; }, duration);
 }
 
 // --- Réseau -----------------------------------------------------------------
@@ -146,7 +151,7 @@ if (isIos && !isStandalone()) {
 // IndexedDB, outbox et synchronisation vivent dans data.js, partagé avec le Service Worker.
 const {
   db, getDeviceId, listSessions, getSession, saveSession, deleteSession,
-  getPhoto, countPending, syncPendingData, pullSessions,
+  getPhoto, countPending, syncPendingData, pullSessions, resolveConflict,
 } = PulseData;
 
 const SESSION_TYPES = {
@@ -296,6 +301,13 @@ function renderItem(session) {
 
   li.append(head, meta);
 
+  if (session.syncState === 'conflict') {
+    const conflict = document.createElement('span');
+    conflict.className = 'session-error';
+    conflict.textContent = 'Modifiée ailleurs entre-temps : choisissez la version à garder.';
+    li.append(conflict);
+  }
+
   if (session.syncState === 'error' && session.syncError) {
     const error = document.createElement('span');
     error.className = 'session-error';
@@ -316,7 +328,7 @@ function renderItem(session) {
   detail.type = 'button';
   detail.className = 'btn btn-secondary';
   detail.dataset.action = 'detail';
-  detail.textContent = 'Détails';
+  detail.textContent = session.syncState === 'conflict' ? 'Résoudre le conflit' : 'Détails';
   detail.setAttribute('aria-label', `Voir la séance ${describe(session)}`);
   const edit = document.createElement('button');
   edit.type = 'button';
@@ -357,6 +369,8 @@ function notifyChange() {
 }
 channel?.addEventListener('message', (event) => {
   if (event.data?.type === 'sessions-changed') refresh();
+  // Rejeu fait par un autre onglet : on affiche aussi son résultat (conflit, refus…), sans le rediffuser.
+  if (event.data?.type === 'sync-result') handleSyncResult(event.data.result, { broadcast: false });
 });
 
 // --- Formulaire -------------------------------------------------------------
@@ -369,9 +383,14 @@ function showError(messages) {
   formError.hidden = messages.length === 0;
 }
 
+// Révision et version de la séance au moment où le formulaire l'a chargée : si un autre onglet
+// la modifie entre-temps, l'envoi portera un If-Match périmé et le serveur signalera le conflit.
+let editBase = null;
+
 function resetForm() {
   form.reset();
   sessionIdInput.value = '';
+  editBase = null;
   form.elements.date.value = toLocalInputValue(new Date());
   formTitle.textContent = 'Nouvelle séance';
   submitBtn.textContent = 'Enregistrer la séance';
@@ -382,6 +401,13 @@ function resetForm() {
 }
 
 function startEdit(session) {
+  // Une séance en conflit se résout d'abord : la modifier repartirait d'un état contesté.
+  if (session.syncState === 'conflict') {
+    showToast('Choisissez d\'abord la version à garder.');
+    openDetail(session.id);
+    return;
+  }
+  editBase = { rev: session.localRev ?? 0, version: session.version ?? null };
   form.elements.type.value = session.type;
   form.elements.date.value = toLocalInputValue(session.date);
   form.elements.durationMin.value = session.durationMin;
@@ -412,7 +438,10 @@ form.addEventListener('submit', async (event) => {
   }
   const editing = Boolean(sessionIdInput.value);
   try {
-    await saveSession({ ...value, location: formLocation }, sessionIdInput.value || null, { photo: formPhoto });
+    await saveSession({ ...value, location: formLocation }, sessionIdInput.value || null, {
+      photo: formPhoto,
+      base: sessionIdInput.value ? editBase : undefined,
+    });
   } catch (error) {
     console.error(error);
     showError(["Impossible d'enregistrer sur cet appareil (stockage plein ou indisponible)."]);
@@ -644,6 +673,56 @@ function sessionSummary(session) {
   return lines.join('\n');
 }
 
+// --- Conflit (bonus) : comparaison et choix ------------------------------------
+const conflictPanel = document.getElementById('conflict-panel');
+const conflictRows = document.getElementById('conflict-rows');
+let detailSessionId = null;
+
+const CONFLICT_FIELDS = [
+  ['Type', (s) => SESSION_TYPES[s.type] || s.type],
+  ['Date', (s) => dateFormat.format(new Date(s.date))],
+  ['Durée', (s) => `${s.durationMin} min`],
+  ['Distance', (s) => (s.distanceKm != null ? `${kmFormat.format(s.distanceKm)} km` : '—')],
+  ['Note', (s) => s.note || '—'],
+  ['Position', (s) => (s.location ? `${s.location.lat}, ${s.location.lng}` : '—')],
+];
+
+function renderConflict(session) {
+  const server = session.syncState === 'conflict' ? session.serverCopy : null;
+  conflictPanel.hidden = !server;
+  if (!server) return;
+  conflictRows.replaceChildren(...CONFLICT_FIELDS.map(([label, format]) => {
+    const tr = document.createElement('tr');
+    const mine = format(session);
+    const theirs = format(server);
+    if (mine !== theirs) tr.className = 'differs';
+    const th = document.createElement('th');
+    th.scope = 'row';
+    th.textContent = label;
+    const a = document.createElement('td');
+    a.textContent = mine;
+    const b = document.createElement('td');
+    b.textContent = theirs;
+    tr.append(th, a, b);
+    return tr;
+  }));
+}
+
+async function resolve(choice) {
+  if (!detailSessionId) return;
+  const id = detailSessionId;
+  const resolved = await resolveConflict(id, choice);
+  if (!resolved) return;
+  showToast(choice === 'mine' ? 'Votre version sera renvoyée au serveur.' : 'La version du serveur a été reprise.');
+  await refresh();
+  notifyChange();
+  if (choice === 'mine') requestSync();
+  await openDetail(id, { push: false });
+}
+
+document.getElementById('conflict-mine').addEventListener('click', () => resolve('mine'));
+document.getElementById('conflict-theirs').addEventListener('click', () => resolve('theirs'));
+
 async function openDetail(id, { push = true } = {}) {
   const session = await getSession(id);
   if (!session) {
@@ -651,6 +730,8 @@ async function openDetail(id, { push = true } = {}) {
     history.replaceState(null, '', '/');
     return;
   }
+  detailSessionId = id;
+  renderConflict(session);
   detailTitle.textContent = SESSION_TYPES[session.type] || session.type;
   const parts = [dateFormat.format(new Date(session.date)), `${session.durationMin} min`];
   if (session.distanceKm != null) parts.push(`${kmFormat.format(session.distanceKm)} km`);
@@ -720,6 +801,7 @@ detailDialog.addEventListener('close', () => {
   if (detailPhotoUrl) URL.revokeObjectURL(detailPhotoUrl);
   detailPhotoUrl = null;
   shareData = null;
+  detailSessionId = null;
   if (new URLSearchParams(location.search).has('session')) {
     // Ouvert depuis la liste : on revient à l'entrée précédente ; ouvert par lien direct : on nettoie l'URL.
     if (history.state?.session) history.back();
@@ -758,14 +840,21 @@ function plural(n, word) {
   return `${n} ${word}${n > 1 ? 's' : ''}`;
 }
 
-async function handleSyncResult(result) {
+// broadcast : prévenir les autres onglets. Inutile quand le résultat vient du Service Worker
+// (il l'envoie déjà à toutes les pages) ou d'un autre onglet (pas de rediffusion en boucle).
+async function handleSyncResult(result, { broadcast = true } = {}) {
   await refresh();
-  notifyChange();
+  const happened = result.sent || result.rejected.length || result.conflicts;
+  if (broadcast && happened) channel?.postMessage({ type: 'sync-result', result });
+  // Le détail ouvert reflète l'état à jour (bannière de conflit apparue, badge…).
+  if (detailDialog.open && detailSessionId) openDetail(detailSessionId, { push: false });
   if (result.sent) showToast(`${plural(result.sent, 'modification')} envoyée${result.sent > 1 ? 's' : ''} au serveur.`);
   if (result.rejected.length) {
-    showToast(`${plural(result.rejected.length, 'séance')} refusée${result.rejected.length > 1 ? 's' : ''} par le serveur : ${result.rejected[0].message}`, 6000);
+    showToast(`${plural(result.rejected.length, 'séance')} refusée${result.rejected.length > 1 ? 's' : ''} par le serveur : ${result.rejected[0].message}`, 6000, 1);
   }
-  if (result.conflicts) showToast(`${plural(result.conflicts, 'conflit')} à résoudre.`, 6000);
+  if (result.conflicts) {
+    showToast(`${plural(result.conflicts, 'séance')} modifiée${result.conflicts > 1 ? 's' : ''} ailleurs : touchez « Résoudre le conflit ».`, 6000, 1);
+  }
 }
 
 async function runSync({ manual = false } = {}) {
@@ -776,7 +865,10 @@ async function runSync({ manual = false } = {}) {
     const result = await syncPendingData();
     await handleSyncResult(result);
     // Lecture réseau d'abord ; en cas d'échec, IndexedDB reste affichée telle quelle.
-    if (!result.retry && (await pullSessions()).updated) await refresh();
+    if (!result.retry && (await pullSessions()).updated) {
+      await refresh();
+      notifyChange();
+    }
     if (manual && result.retry) showToast("Serveur injoignable : nouvel essai au retour du réseau.");
   } catch (error) {
     console.error(error);
@@ -809,7 +901,7 @@ document.addEventListener('visibilitychange', () => {
 
 // Résultat d'un rejeu fait par le Service Worker (Background Sync).
 navigator.serviceWorker?.addEventListener('message', (event) => {
-  if (event.data?.type === 'SYNC_RESULT') handleSyncResult(event.data.result);
+  if (event.data?.type === 'SYNC_RESULT') handleSyncResult(event.data.result, { broadcast: false });
 });
 
 // --- Démarrage --------------------------------------------------------------

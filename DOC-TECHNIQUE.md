@@ -6,7 +6,7 @@
 | --- | --- |
 | Application | <https://pulsetrackisco.netlify.app> |
 | Dépôt | <https://github.com/touilmohammed/pulsetrack> |
-| Version décrite | `v1.3` (cache `pulsetrack-v9`) |
+| Version décrite | `v1.3.2` (cache `pulsetrack-v10`) |
 | Lancer en local | `npm install && npm start` → <http://localhost:3000> |
 | Tests | `npm test` (159 vérifications automatisées, voir § 11) |
 
@@ -95,7 +95,7 @@ tests/                    tests automatisés (npm test)
 
 ## 4. Stratégies de cache
 
-Fichier : [`sw.js`](sw.js). Un seul cache versionné, `CACHE_NAME = 'pulsetrack-v9'`.
+Fichier : [`sw.js`](sw.js). Un seul cache versionné, `CACHE_NAME = 'pulsetrack-v10'`.
 
 | Ressource | Stratégie | Stockage | Pourquoi |
 | --- | --- | --- | --- |
@@ -125,7 +125,7 @@ Points de détail, tous visibles dans `sw.js` :
 
 Mécanisme ([`sw.js`](sw.js), section « Service Worker et mises à jour » de [`app.js`](app.js)) :
 
-1. À chaque déploiement qui touche le shell, `CACHE_NAME` est incrémenté (v1 → v9 sur ce projet).
+1. À chaque déploiement qui touche le shell, `CACHE_NAME` est incrémenté (v1 → v10 sur ce projet).
 2. Le navigateur détecte un `sw.js` différent (vérification à chaque navigation servie par le Service Worker, qui appelle `registration.update()`) ; le nouveau Service Worker pré-cache tout le shell et **attend** : pas de `skipWaiting()` automatique.
 3. La page écoute `updatefound` puis `statechange` ; à l'état `installed` **avec un contrôleur existant** (donc une mise à jour, pas la première installation), elle affiche la bannière.
 4. « Mettre à jour » envoie `postMessage({ type: 'SKIP_WAITING' })` ; le Service Worker appelle `skipWaiting()`, puis `activate` supprime les anciens caches `pulsetrack-*` et appelle `clients.claim()`.

@@ -403,6 +403,20 @@ En mode sans interface, le navigateur n'a pas de service de push : le test de bo
 
 Deux onglets qui modifient **l'un après l'autre** la même séance ne créent pas de conflit : ils partagent la base IndexedDB et se préviennent par `BroadcastChannel`, donc le second repart de la version du premier. Le conflit n'apparaît que si les deux formulaires ont été ouverts sur la même version, comme le prévoit le § 6.7.
 
+**Captures** (iPhone, app installée, production, 12 octobre 2026) :
+
+| Capture | Ce qu'elle montre |
+| --- | --- |
+| [Journal hors ligne](docs/captures/01-journal-hors-ligne.png) | Mode avion : bandeau hors ligne, séance « En attente » à côté des séances « Synchronisée » (T4, T7) |
+| [Détail d'une séance](docs/captures/02-detail-photo-position.png) | Photo et position affichées hors ligne, bouton Partager (T15) ; coordonnées masquées sur la capture publiée |
+| [Conflit détecté](docs/captures/03-conflit-detecte.png) | Badge « Conflit » et toast après le 412 (T9) |
+| [Résolution du conflit](docs/captures/04-conflit-resolution.png) | Comparaison champ par champ, « Garder la mienne » / « Prendre la leur » (T9) |
+| [Conflit résolu](docs/captures/05-conflit-resolu.png) | Séance de nouveau « Synchronisée », modification envoyée au serveur (T9) |
+| [Réglages des rappels](docs/captures/06-rappels-reglages.png) | Jours et heure choisis, rappels activés (T16) |
+| [Notification de rappel](docs/captures/07-rappel-notification.png) | Rappel de test reçu sur l'écran verrouillé (T16) |
+| [Bannière de mise à jour](docs/captures/08-mise-a-jour-banniere.png) | « Nouvelle version disponible » (v9 → v10) au-dessus d'une séance en cours de modification (T6) |
+| [Aperçu de partage](docs/captures/09-apercu-partage-discord.png) | Carte Open Graph (titre, description, image) générée par Discord à partir du lien (§ 9) |
+
 ## 12. Limites connues et écarts
 
 ### 12.1 Limites

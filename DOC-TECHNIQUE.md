@@ -403,7 +403,7 @@ En mode sans interface, le navigateur n'a pas de service de push : le test de bo
 
 Deux onglets qui modifient **l'un après l'autre** la même séance ne créent pas de conflit : ils partagent la base IndexedDB et se préviennent par `BroadcastChannel`, donc le second repart de la version du premier. Le conflit n'apparaît que si les deux formulaires ont été ouverts sur la même version, comme le prévoit le § 6.7.
 
-**Captures** (iPhone, app installée, production, 12 octobre 2026) :
+**Captures** (iPhone, app installée, production, 12 octobre 2026) ; toutes réunies sur une [planche](docs/captures/00-planche.png) et dans la [galerie](docs/captures/) :
 
 | Capture | Ce qu'elle montre |
 | --- | --- |

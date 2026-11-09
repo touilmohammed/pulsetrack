@@ -58,6 +58,7 @@ if (remote) {
   await waitForServer(base);
   suites.push(['API (unitaires)', 'api.test.mjs', []]);
   suites.push(['Rappels push, serveur (unitaires)', 'push.test.mjs', []]);
+  suites.push(['Rappels Android FCM, serveur (unitaires)', 'fcm.test.mjs', []]);
   suites.push(['Installable et hors ligne (sprint 1)', 'sprint1.e2e.mjs', [base]]);
   suites.push(['Séances locales IndexedDB (sprint 2)', 'sprint2.e2e.mjs', [base]]);
   suites.push(['Mise à jour proposée (sprint 3)', 'sprint3.e2e.mjs', [base, join(copy, 'sw.js')]]);

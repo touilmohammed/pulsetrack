@@ -8,6 +8,7 @@ import webpush from 'web-push';
 import { createApi } from './api.mjs';
 import { createFileStore } from './store-file.mjs';
 import { runReminders, createSender } from './push.mjs';
+import { createFcmSender, fcmCredentialsFromEnv } from './fcm.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.PORT) || 3000;
@@ -40,12 +41,15 @@ const push = {
   // Tests : un faux service de push local (ex. PUSH_EXTRA_HOSTS=localhost).
   extraHosts: process.env.PUSH_EXTRA_HOSTS ? process.env.PUSH_EXTRA_HOSTS.split(',') : [],
 };
+// Rappels Android : seulement si le compte de service FCM est fourni (mêmes variables qu'en production).
+const fcmCredentials = fcmCredentialsFromEnv();
+if (fcmCredentials) push.fcm = createFcmSender(fcmCredentials);
 
 const store = await createFileStore(DATA_FILE);
 const api = createApi(store, { push });
 
 // Comme la Scheduled Function de production : rappels dus vérifiés toutes les heures.
-setInterval(() => runReminders(store, push.sendNotification).catch(console.error), 60 * 60 * 1000).unref();
+setInterval(() => runReminders(store, { web: push.sendNotification, fcm: push.fcm }).catch(console.error), 60 * 60 * 1000).unref();
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8',

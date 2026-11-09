@@ -6,10 +6,10 @@ import { store, pushConfig } from '../lib/netlify-store.mjs';
 export default async () => {
   const push = pushConfig();
   if (!push) {
-    console.log('Rappels non configurés (clés VAPID absentes).');
+    console.log('Rappels non configurés (ni clés VAPID ni compte de service FCM).');
     return;
   }
-  const summary = await runReminders(store, push.sendNotification);
+  const summary = await runReminders(store, { web: push.sendNotification, fcm: push.fcm });
   console.log('Rappels', JSON.stringify(summary));
 };
 

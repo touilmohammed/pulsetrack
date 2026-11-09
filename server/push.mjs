@@ -1,7 +1,7 @@
-// Rappels d'entraînement par notifications push (Web Push + VAPID).
-// Indépendant de l'hébergeur : l'envoi réel (librairie web-push) est injecté par l'appelant.
+// Rappels d'entraînement par notifications push : Web Push + VAPID pour la PWA, FCM pour l'app Android.
+// Indépendant de l'hébergeur : l'envoi réel (librairie web-push, fcm.mjs) est injecté par l'appelant.
 //
-// Clé de stockage : push/<deviceId>/<id> → { id, deviceId, subscription, reminder, lastSent, createdAt }
+// Clé de stockage : push/<deviceId>/<id> → { id, deviceId, subscription | fcmToken, reminder, lastSent, createdAt }
 // reminder : { days: [0-6] (0 = dimanche), hour: 6-22, timeZone: 'Europe/Paris' }
 
 const DAY_NAMES = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
@@ -30,15 +30,9 @@ export function isAllowedEndpoint(endpoint, extraHosts = []) {
 
 const B64URL = /^[A-Za-z0-9_-]{16,200}$/;
 
-export function validateSubscription(body, { extraHosts = [] } = {}) {
-  const errors = [];
-  const sub = body?.subscription;
-  if (!sub || typeof sub.endpoint !== 'string' || sub.endpoint.length > 1000 || !isAllowedEndpoint(sub.endpoint, extraHosts)) {
-    errors.push('abonnement invalide (service de push inconnu)');
-  }
-  if (!B64URL.test(sub?.keys?.p256dh ?? '') || !B64URL.test(sub?.keys?.auth ?? '')) errors.push('clés d\'abonnement invalides');
-
-  const r = body?.reminder ?? {};
+// Jours, heure et fuseau du rappel : mêmes règles pour la PWA et pour l'app Android.
+function validateReminder(input, errors) {
+  const r = input ?? {};
   const days = Array.isArray(r.days) ? [...new Set(r.days)].filter((d) => Number.isInteger(d) && d >= 0 && d <= 6).sort() : [];
   if (!days.length) errors.push('choisissez au moins un jour');
   if (!Number.isInteger(r.hour) || r.hour < 0 || r.hour > 23) errors.push('heure invalide');
@@ -48,13 +42,35 @@ export function validateSubscription(body, { extraHosts = [] } = {}) {
   } catch {
     errors.push('fuseau horaire invalide');
   }
+  return { days, hour: r.hour, timeZone };
+}
+
+export function validateSubscription(body, { extraHosts = [] } = {}) {
+  const errors = [];
+  const sub = body?.subscription;
+  if (!sub || typeof sub.endpoint !== 'string' || sub.endpoint.length > 1000 || !isAllowedEndpoint(sub.endpoint, extraHosts)) {
+    errors.push('abonnement invalide (service de push inconnu)');
+  }
+  if (!B64URL.test(sub?.keys?.p256dh ?? '') || !B64URL.test(sub?.keys?.auth ?? '')) errors.push('clés d\'abonnement invalides');
+  const reminder = validateReminder(body?.reminder, errors);
   return {
     errors,
     value: errors.length ? null : {
       subscription: { endpoint: sub.endpoint, keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth } },
-      reminder: { days, hour: r.hour, timeZone },
+      reminder,
     },
   };
+}
+
+// Jeton FCM de l'app Android : une chaîne opaque donnée par Firebase. Jamais une URL : pas de risque SSRF,
+// le serveur n'écrit qu'à l'API de Google.
+const FCM_TOKEN = /^[A-Za-z0-9_:-]{20,4096}$/;
+
+export function validateFcmRegistration(body) {
+  const errors = [];
+  if (!FCM_TOKEN.test(body?.token ?? '')) errors.push('jeton FCM invalide');
+  const reminder = validateReminder(body?.reminder, errors);
+  return { errors, value: errors.length ? null : { fcmToken: body.token, reminder } };
 }
 
 // Identifiant stable d'un abonnement : empreinte SHA-256 de son endpoint.
@@ -108,10 +124,20 @@ export function createSender(webpush, { subject, publicKey, privateKey }) {
   };
 }
 
-// Envoi d'une notification ; un abonnement expiré (404, 410) est supprimé.
-export async function deliver(store, record, payload, sendNotification) {
+// Les expéditeurs : { web: sendNotification, fcm: sendFcm }. Une fonction seule vaut { web }.
+const senders = (send) => (typeof send === 'function' ? { web: send } : send ?? {});
+
+// Envoi d'une notification, vers le navigateur ou vers l'app ; un abonnement expiré (404, 410) est supprimé.
+export async function deliver(store, record, payload, send) {
+  const { web, fcm } = senders(send);
   try {
-    await sendNotification(record.subscription, JSON.stringify(payload), { TTL: 3600, urgency: 'normal' });
+    if (record.fcmToken) {
+      if (!fcm) return 'failed'; // FCM non configuré sur ce serveur : l'abonnement est gardé
+      await fcm(record.fcmToken, payload);
+    } else {
+      if (!web) return 'failed';
+      await web(record.subscription, JSON.stringify(payload), { TTL: 3600, urgency: 'normal' });
+    }
     return 'sent';
   } catch (error) {
     if (error.statusCode === 404 || error.statusCode === 410) {
@@ -125,14 +151,14 @@ export async function deliver(store, record, payload, sendNotification) {
 
 // Appelée toutes les heures (Netlify Scheduled Function, ou minuterie du serveur local).
 // Un rappel est dû si le jour et l'heure locaux correspondent ; lastSent empêche un double envoi le même jour.
-export async function runReminders(store, sendNotification, now = new Date()) {
+export async function runReminders(store, send, now = new Date()) {
   const records = await store.list('push/');
   const summary = { checked: records.length, sent: 0, expired: 0, failed: 0 };
   for (const record of records) {
     const { reminder } = record;
     const local = localParts(now, reminder.timeZone);
     if (!reminder.days.includes(local.weekday) || local.hour !== reminder.hour || record.lastSent === local.day) continue;
-    const result = await deliver(store, record, reminderPayload(reminder, now), sendNotification);
+    const result = await deliver(store, record, reminderPayload(reminder, now), send);
     summary[result]++;
     if (result === 'sent') await store.set(`push/${record.deviceId}/${record.id}`, { ...record, lastSent: local.day });
   }

@@ -5,7 +5,7 @@
 // Clés : sessions/<deviceId>/<sessionId> et ops/<deviceId>/<opId> (réponses mémorisées pour l'idempotence),
 // push/<deviceId>/<id> (abonnements aux rappels, voir push.mjs).
 
-import { validateSubscription, subscriptionId, deliver, testPayload } from './push.mjs';
+import { validateSubscription, validateFcmRegistration, subscriptionId, deliver, testPayload } from './push.mjs';
 
 const TYPES = new Set(['course', 'velo', 'marche', 'musculation', 'autre']);
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -106,8 +106,9 @@ export function createApi(store, {
   // Sur Netlify, chaque instance de la fonction a son propre compteur : c'est un garde-fou contre
   // une boucle d'envoi ou un abus simple, pas une protection contre une attaque distribuée.
   rateLimit = { windowMs: 60_000, max: 120 },
-  // Rappels push : { publicKey, sendNotification(subscription, payload, options), extraHosts }.
-  // Sans clé VAPID configurée, les routes /api/push/* répondent 503 et l'app l'explique à l'utilisateur.
+  // Rappels push : { publicKey, sendNotification(subscription, payload, options), extraHosts, fcm(token, payload) }.
+  // Sans clé VAPID (PWA) ou sans compte de service FCM (app Android), la route concernée répond 503
+  // et l'app l'explique à l'utilisateur.
   push = null,
 } = {}) {
   const sessionKey = (deviceId, id) => `sessions/${deviceId}/${id}`;
@@ -195,8 +196,14 @@ export function createApi(store, {
     if (!push?.publicKey || !push?.sendNotification) throw new HttpError(503, 'Rappels non configurés sur le serveur.');
   }
 
+  function requireFcm() {
+    if (!push?.fcm) throw new HttpError(503, 'Rappels Android non configurés sur le serveur.');
+  }
+
   async function pushRoute(action, method, deviceId, request) {
-    requirePush();
+    if (action === 'fcm') return fcmRoute(method, deviceId, request);
+    // Le rappel de test sert aux deux : il suffit que l'un des deux expéditeurs soit configuré.
+    if (action !== 'test' || (!push?.sendNotification && !push?.fcm)) requirePush();
     // La clé publique VAPID n'est pas un secret : le navigateur en a besoin pour s'abonner.
     if (action === 'key' && method === 'GET') return json(200, { publicKey: push.publicKey });
     checkRateLimit(deviceId);
@@ -219,16 +226,39 @@ export function createApi(store, {
     if (action === 'test' && method === 'POST') {
       const records = await store.list(`push/${deviceId}/`);
       if (!records.length) throw new HttpError(404, 'Aucun abonnement aux rappels pour cet appareil.');
-      const results = await Promise.all(records.map((r) => deliver(store, r, testPayload(), push.sendNotification)));
+      const send = { web: push.sendNotification, fcm: push.fcm };
+      const results = await Promise.all(records.map((r) => deliver(store, r, testPayload(), send)));
       const count = (k) => results.filter((x) => x === k).length;
       return json(200, { sent: count('sent'), expired: count('expired'), failed: count('failed') });
     }
     throw new HttpError(405, 'Méthode non autorisée.');
   }
 
+  // L'app Android s'abonne avec son jeton FCM ; même stockage et mêmes rappels que la PWA.
+  async function fcmRoute(method, deviceId, request) {
+    requireFcm();
+    checkRateLimit(deviceId);
+    if (method === 'POST') {
+      const { errors, value } = validateFcmRegistration(await readJson(request));
+      if (errors.length) throw new HttpError(422, `Abonnement refusé : ${errors.join(', ')}.`);
+      const id = await subscriptionId(`fcm:${value.fcmToken}`);
+      const key = `push/${deviceId}/${id}`;
+      const existing = await store.get(key);
+      await store.set(key, { id, deviceId, ...value, lastSent: existing?.lastSent ?? null, createdAt: existing?.createdAt ?? now() });
+      return json(existing ? 200 : 201, { reminder: value.reminder });
+    }
+    if (method === 'DELETE') {
+      const body = await readJson(request);
+      if (typeof body?.token !== 'string') throw new HttpError(400, 'jeton manquant.');
+      await store.delete(`push/${deviceId}/${await subscriptionId(`fcm:${body.token}`)}`);
+      return json(204, null);
+    }
+    throw new HttpError(405, 'Méthode non autorisée.');
+  }
+
   async function route(request) {
     const url = new URL(request.url);
-    const pushMatch = url.pathname.match(/^\/api\/push\/(key|subscribe|test)\/?$/);
+    const pushMatch = url.pathname.match(/^\/api\/push\/(key|subscribe|test|fcm)\/?$/);
     const match = url.pathname.match(/^\/api\/sessions(?:\/([^/]+))?\/?$/);
     if (!match && !pushMatch) throw new HttpError(404, 'Route inconnue.');
 

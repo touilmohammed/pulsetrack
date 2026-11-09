@@ -10,12 +10,19 @@ const SCOPE = 'https://www.googleapis.com/auth/firebase.messaging';
 export function fcmCredentialsFromEnv(env = process.env) {
   const { FCM_PROJECT_ID, FCM_CLIENT_EMAIL, FCM_PRIVATE_KEY } = env;
   if (!FCM_PROJECT_ID || !FCM_CLIENT_EMAIL || !FCM_PRIVATE_KEY) return null;
-  return {
-    projectId: FCM_PROJECT_ID,
-    clientEmail: FCM_CLIENT_EMAIL,
-    // Copiée depuis le JSON, la clé garde souvent ses « \n » littéraux : on les rend à la ligne.
-    privateKey: FCM_PRIVATE_KEY.replace(/\\n/g, '\n'),
-  };
+  return { projectId: FCM_PROJECT_ID, clientEmail: FCM_CLIENT_EMAIL, privateKey: normalizePem(FCM_PRIVATE_KEY) };
+}
+
+// La signature exige une clé PEM complète. Collée dans l'interface de Netlify, elle arrive sous bien des
+// formes : avec ses « \n » littéraux du JSON, entre guillemets, ou sans en-tête ni pied. On ne garde que le
+// base64, puis on reconstruit le PEM : en-tête, lignes de 64 caractères, pied.
+export function normalizePem(value) {
+  const base64 = value
+    .replace(/\\n/g, '\n')
+    .replace(/-----(BEGIN|END) PRIVATE KEY-----/g, '')
+    .replace(/[^A-Za-z0-9+/=]/g, '');
+  const lines = base64.match(/.{1,64}/g) ?? [];
+  return `-----BEGIN PRIVATE KEY-----\n${lines.join('\n')}\n-----END PRIVATE KEY-----\n`;
 }
 
 const b64url = (value) => Buffer.from(typeof value === 'string' ? value : JSON.stringify(value)).toString('base64url');

@@ -4,7 +4,7 @@ import { createServer } from 'node:http';
 import { createVerify, generateKeyPairSync } from 'node:crypto';
 import { createApi } from '../server/api.mjs';
 import { deliver, runReminders } from '../server/push.mjs';
-import { createFcmSender, fcmCredentialsFromEnv } from '../server/fcm.mjs';
+import { createFcmSender, fcmCredentialsFromEnv, signJwt } from '../server/fcm.mjs';
 
 const results = [];
 const check = (name, ok, detail = '') => results.push(`${ok ? 'OK  ' : 'FAIL'} ${name}${detail ? ' — ' + detail : ''}`);
@@ -61,8 +61,24 @@ const WED_18 = new Date('2026-10-14T16:05:00Z'); // mercredi 18 h à Paris
 
 try {
   // Configuration depuis l'environnement
-  const fromEnv = fcmCredentialsFromEnv({ FCM_PROJECT_ID: 'p', FCM_CLIENT_EMAIL: 'e@x', FCM_PRIVATE_KEY: '-----BEGIN-----\\nabc\\n-----END-----\\n' });
-  check('Variables Netlify : « \\n » littéraux de la clé rendus à la ligne', fromEnv.privateKey === '-----BEGIN-----\nabc\n-----END-----\n');
+  // La clé, telle qu'on peut la coller dans Netlify : chaque forme doit redonner une clé utilisable.
+  const body = privateKey.replace(/-----(BEGIN|END) PRIVATE KEY-----/g, '').replace(/\s/g, '');
+  const forms = {
+    'PEM d\'origine': privateKey,
+    '« \\n » littéraux du JSON': privateKey.replace(/\n/g, '\\n'),
+    'entre guillemets': `"${privateKey.replace(/\n/g, '\\n')}"`,
+    'sans en-tête ni pied, sur une ligne': body,
+    'sans en-tête ni pied, avec espaces': body.match(/.{1,40}/g).join(' '),
+  };
+  const usable = Object.entries(forms).filter(([, value]) => {
+    const key = fcmCredentialsFromEnv({ FCM_PROJECT_ID: 'p', FCM_CLIENT_EMAIL: 'e@x', FCM_PRIVATE_KEY: value }).privateKey;
+    try {
+      return createVerify('RSA-SHA256').update('x').verify(publicKey, signJwt({ x: 1 }, key).split('.')[2], 'base64url') !== undefined;
+    } catch {
+      return false;
+    }
+  }).map(([name]) => name);
+  check('Clé collée sous toutes ses formes : PEM reconstruit, signature possible', usable.length === Object.keys(forms).length, `utilisables : ${usable.join(', ')}`);
   check('Sans les trois variables : FCM désactivé', fcmCredentialsFromEnv({ FCM_PROJECT_ID: 'p' }) === null);
 
   // Routes de l'API

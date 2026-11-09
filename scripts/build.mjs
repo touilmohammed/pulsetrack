@@ -7,7 +7,8 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const DIST = join(ROOT, 'dist');
-const PUBLIC_DIRS = ['icons', 'images', 'vendor'];
+// .well-known/assetlinks.json : la preuve que l'app Android a le droit d'ouvrir les liens du site (App Link).
+const PUBLIC_DIRS = ['icons', 'images', 'vendor', '.well-known'];
 const PUBLIC_FILE = /^(?!package(-lock)?\.json$).+\.(html|css|js|json|txt|xml)$|^sessions\.md$|^_headers$/;
 
 await rm(DIST, { recursive: true, force: true });

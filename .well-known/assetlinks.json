@@ -1,0 +1,13 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "corsica.universita.pulsetrack",
+      "sha256_cert_fingerprints": [
+        "C4:77:73:09:C2:A5:95:F2:1E:33:18:41:43:83:AF:AE:EE:78:DC:1D:69:63:7B:A2:0B:BF:05:3C:8C:DA:F2:90",
+        "FF:D2:7F:DA:6F:51:B2:C8:1E:86:D0:02:97:B4:56:CF:D7:99:68:6B:B7:D5:02:70:1F:CC:8A:31:33:26:C5:7E"
+      ]
+    }
+  }
+]

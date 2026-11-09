@@ -38,6 +38,7 @@ if (remote) {
   suites.push(['Installable et hors ligne (sprint 1)', 'sprint1.e2e.mjs', [base]]);
   suites.push(['Séances locales IndexedDB (sprint 2)', 'sprint2.e2e.mjs', [base]]);
   suites.push(['Capacités de l\'appareil (sprint 6)', 'sprint6.e2e.mjs', [base]]);
+  suites.push(['App Link Android (assetlinks.json)', 'applink.test.mjs', [base]]);
   suites.push(['Conflits If-Match (bonus, T9)', 'conflicts.e2e.mjs', [base]]);
   suites.push(['Synchronisation de bout en bout', 'remote-sync.e2e.mjs', [base]]);
 } else {
@@ -59,6 +60,7 @@ if (remote) {
   suites.push(['API (unitaires)', 'api.test.mjs', []]);
   suites.push(['Rappels push, serveur (unitaires)', 'push.test.mjs', []]);
   suites.push(['Rappels Android FCM, serveur (unitaires)', 'fcm.test.mjs', []]);
+  suites.push(['App Link Android (assetlinks.json)', 'applink.test.mjs', [base]]);
   suites.push(['Installable et hors ligne (sprint 1)', 'sprint1.e2e.mjs', [base]]);
   suites.push(['Séances locales IndexedDB (sprint 2)', 'sprint2.e2e.mjs', [base]]);
   suites.push(['Mise à jour proposée (sprint 3)', 'sprint3.e2e.mjs', [base, join(copy, 'sw.js')]]);

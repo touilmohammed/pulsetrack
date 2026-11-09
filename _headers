@@ -20,6 +20,10 @@
 /llms.txt
   Content-Type: text/plain; charset=utf-8
 
+# App Link Android : lu par l'OS à l'installation de l'app ; JSON exigé, sans redirection.
+/.well-known/assetlinks.json
+  Content-Type: application/json
+
 # Le Service Worker doit toujours être revalidé : c'est lui qui détecte les nouvelles versions.
 /sw.js
   Cache-Control: no-cache

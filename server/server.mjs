@@ -96,7 +96,9 @@ const headersFor = (pathname) => Object.assign({}, ...headerRules.filter((r) => 
 async function serveStatic(pathname, res) {
   const relative = normalize(decodeURIComponent(pathname === '/' ? '/index.html' : pathname)).replace(/^[/\\]+/, '');
   const segments = relative.split(sep);
-  if (segments.some((s) => s === '..' || s.startsWith('.')) || PRIVATE.has(segments[0])) return false;
+  // Aucun fichier caché servi (.git, .env…), sauf .well-known, le dossier standard des déclarations du site.
+  const hidden = segments.some((s, i) => s === '..' || (s.startsWith('.') && !(i === 0 && s === '.well-known')));
+  if (hidden || PRIVATE.has(segments[0])) return false;
   const file = join(ROOT, relative);
   try {
     if (!(await stat(file)).isFile()) return false;
